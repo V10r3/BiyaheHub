@@ -1,7 +1,7 @@
 {
-  "name": "routemap-api",
+  "name": "bh-api",
   "version": "1.0.0",
-  "description": "Local Express + MySQL API for RouteMap PH",
+  "description": "Local Express + MySQL API for BiyaheHub PH",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

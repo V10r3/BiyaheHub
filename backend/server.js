@@ -28,6 +28,6 @@ app.get("/api/health", async (req, res) => {
 
 // ── Start ─────────────────────────────────────────────────────────────────────
 app.listen(PORT, () => {
-  console.log(`✅ RouteMap API running at http://localhost:${PORT}`);
+  console.log(`✅ BiyaheHub API running at http://localhost:${PORT}`);
   console.log(`   Health check → http://localhost:${PORT}/api/health`);
 });

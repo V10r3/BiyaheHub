@@ -32,7 +32,7 @@ export function NavBar() {
       <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <MapPin className="text-blue-600" size={20} />
-          <span className="text-blue-700 tracking-tight">RouteMap PH</span>
+          <span className="text-blue-700 tracking-tight">BiyaheHub</span>
         </div>
 
         <div className="flex items-center gap-3">

@@ -62,7 +62,7 @@ export default function Landing() {
           <div className="inline-flex items-center justify-center w-14 h-14 bg-white rounded-2xl shadow-lg mb-3">
             <MapPin className="text-blue-600" size={28} />
           </div>
-          <h1 className="text-white text-3xl tracking-tight">RouteMap PH</h1>
+          <h1 className="text-white text-3xl tracking-tight">BiyaheHub</h1>
           <p className="text-blue-100 text-sm mt-1">Real-time traffic & transit for everyone</p>
         </div>
 
