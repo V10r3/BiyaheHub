@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Traffic Route App</title>
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+    }
+    header {
+      background: #0078D7;
+      color: #fff;
+      padding: 10px;
+      text-align: center;
+    }
+    nav {
+      background: #333;
+      color: #fff;
+      padding: 10px;
+      text-align: center;
+    }
+    nav a {
+      color: #fff;
+      margin: 0 10px;
+      text-decoration: none;
+    }
+    section {
+      padding: 20px;
+    }
+    h2, h3 {
+      color: #0078D7;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Welcome to the Traffic Route App</h1>
+</header>
+
+<nav>
+  <a href="#overview">Overview</a>
+  <a href="#features">Features</a>
+</nav>
+
+<section id="overview">
+  <h2>App Overview</h2>
+  <p id="overview-text"></p>
+</section>
+
+<section id="features">
+  <h2>App Features</h2>
+  <div id="features-container"></div>
+</section>
+
+<script>
+  const appDetails = {
+    overview:
+      "A route map that displays traffic. The app has three dashboards: one for PUV/PUJ, one for Private Drivers, and one for commuters.",
+    features: {
+      "PUV/PUJ Driver Dashboard": [
+        "A map showing traffic details for fixed routes.",
+        "Optional: Integration with RF card payment to track passengers based on seat availability."
+      ],
+      "Private Driver Dashboard": [
+        "Interactive map to plot destinations with options to type, pick manually, or use GPS.",
+        "Traffic notifications with alternate route suggestions."
+      ],
+      "Commuter Dashboard": [
+        "Interactive map to plot destinations with traffic details.",
+        "Clock to set arrival time.",
+        "Shows jeeps, buses, taxis, and trains (if applicable).",
+        "Jeepney selection based on designation (e.g., 01K Urgello to Parkmall).",
+        "Bus tracking with pickup/drop-off stops.",
+        "Shows occupied/unoccupied seats for integrated buses/PUVs.",
+        "Taxi tracking with pickup/unload areas.",
+        "Best route suggestions with minimal rides and fare.",
+        "Traffic notifications with alternate route suggestions."
+      ]
+    }
+  };
+
+  // Insert overview
+  document.getElementById("overview-text").textContent = appDetails.overview;
+
+  // Insert features
+  const container = document.getElementById("features-container");
+
+  Object.entries(appDetails.features).forEach(([dashboard, features]) => {
+    const section = document.createElement("div");
+
+    const title = document.createElement("h3");
+    title.textContent = dashboard;
+
+    const ul = document.createElement("ul");
+
+    features.forEach(feature => {
+      const li = document.createElement("li");
+      li.textContent = feature;
+      ul.appendChild(li);
+    });
+
+    section.appendChild(title);
+    section.appendChild(ul);
+    container.appendChild(section);
+  });
+</script>
+
+</body>
+</html>
