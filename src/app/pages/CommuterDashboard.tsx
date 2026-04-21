@@ -1,9 +1,17 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { NavBar } from "../components/NavBar";
-import { routesApi, trafficApi, vehiclesApi, type Route, type TrafficSegment, type Vehicle } from "../services/api";
-import { MapPin, Clock, Bus, Truck, Car, Train, AlertTriangle, ChevronRight, X } from "lucide-react";
+import {
+  routesApi, trafficApi, vehiclesApi,
+  type Route, type TrafficSegment, type Vehicle,
+} from "../services/api";
+import {
+  MapPin, Clock, AlertTriangle, ChevronRight,
+  X, Ruler, ChevronDown, ChevronUp,
+} from "lucide-react";
 import { MapContainer, TileLayer, Polyline, Marker, Popup } from "react-leaflet";
 import L from "leaflet";
+import { RoutingMachine, formatDistance, formatDuration, type RouteSummary } from "../components/RoutingMachine";
+import { FareCalculator } from "../components/FareCalculator";
 
 const trafficColors: Record<string, string> = {
   clear: "#22c55e",
@@ -11,16 +19,22 @@ const trafficColors: Record<string, string> = {
   heavy: "#ef4444",
 };
 
+const vehicleColors: Record<string, string> = {
+  jeepney: "#3b82f6",
+  bus: "#8b5cf6",
+  taxi: "#f59e0b",
+};
+
 const PLACES = [
-  { name: "SM City Cebu", lat: 10.3116, lng: 123.9185 },
-  { name: "Ayala Center Cebu", lat: 10.3185, lng: 123.9054 },
-  { name: "Parkmall Mandaue", lat: 10.3517, lng: 123.9358 },
-  { name: "Cebu IT Park", lat: 10.3277, lng: 123.9055 },
+  { name: "SM City Cebu",       lat: 10.3116, lng: 123.9185 },
+  { name: "Ayala Center Cebu",  lat: 10.3185, lng: 123.9054 },
+  { name: "Parkmall Mandaue",   lat: 10.3517, lng: 123.9358 },
+  { name: "Cebu IT Park",       lat: 10.3277, lng: 123.9055 },
   { name: "University of Cebu", lat: 10.2956, lng: 123.8984 },
-  { name: "Carbon Market", lat: 10.2922, lng: 123.9012 },
-  { name: "Colon Street", lat: 10.2937, lng: 123.9009 },
-  { name: "Talamban Cebu", lat: 10.3671, lng: 123.9103 },
-  { name: "Urgello", lat: 10.295, lng: 123.89 },
+  { name: "Carbon Market",      lat: 10.2922, lng: 123.9012 },
+  { name: "Colon Street",       lat: 10.2937, lng: 123.9009 },
+  { name: "Talamban Cebu",      lat: 10.3671, lng: 123.9103 },
+  { name: "Urgello",            lat: 10.295,  lng: 123.89   },
 ];
 
 function vehicleEmoji(type: string) {
@@ -43,20 +57,26 @@ function pinIcon(color: string, label: string) {
 }
 
 export default function CommuterDashboard() {
-  const [routes, setRoutes] = useState<Route[]>([]);
+  const [routes, setRoutes]   = useState<Route[]>([]);
   const [traffic, setTraffic] = useState<TrafficSegment[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const [destQuery, setDestQuery] = useState("");
-  const [dest, setDest] = useState<{ name: string; lat: number; lng: number } | null>(null);
+  const [destQuery, setDestQuery]     = useState("");
+  const [dest, setDest]               = useState<{ name: string; lat: number; lng: number } | null>(null);
   const [originQuery, setOriginQuery] = useState("");
-  const [origin, setOrigin] = useState<{ name: string; lat: number; lng: number } | null>(null);
+  const [origin, setOrigin]           = useState<{ name: string; lat: number; lng: number } | null>(null);
 
   const [selectedRouteId, setSelectedRouteId] = useState<number | null>(null);
-  const [filter, setFilter] = useState<"all" | "jeepney" | "bus" | "taxi">("all");
-  const [arrivalTime, setArrivalTime] = useState("");
-  const [showAlert, setShowAlert] = useState(false);
+  const [filter, setFilter]                   = useState<"all" | "jeepney" | "bus" | "taxi">("all");
+  const [arrivalTime, setArrivalTime]         = useState("");
+  const [showAlert, setShowAlert]             = useState(false);
+
+  // LRM state
+  const [routeSummary, setRouteSummary]     = useState<RouteSummary | null>(null);
+  const [routingError, setRoutingError]     = useState<string | null>(null);
+  const [showDirections, setShowDirections] = useState(false);
+  const [isRouting, setIsRouting]           = useState(false);
 
   useEffect(() => {
     Promise.all([
@@ -75,10 +95,13 @@ export default function CommuterDashboard() {
     if (origin && dest) {
       const heavy = traffic.some((t) => t.level === "heavy");
       setShowAlert(heavy);
+      setRouteSummary(null);
+      setRoutingError(null);
+      setIsRouting(true);
     }
   }, [origin, dest, traffic]);
 
-  const filteredRoutes = filter === "all" ? routes : routes.filter((r) => r.type === filter);
+  const filteredRoutes   = filter === "all" ? routes   : routes.filter((r) => r.type === filter);
   const filteredVehicles = filter === "all" ? vehicles : vehicles.filter((v) => v.type === filter);
 
   const originSuggestions = PLACES.filter(
@@ -88,23 +111,34 @@ export default function CommuterDashboard() {
     (p) => destQuery.length > 1 && p.name.toLowerCase().includes(destQuery.toLowerCase())
   );
 
-  const selectedRoute = routes.find((r) => r.id === selectedRouteId);
-  const routeVehicles = selectedRoute ? vehicles.filter((v) => v.routeId === selectedRoute.id) : [];
+  const selectedRoute   = routes.find((r) => r.id === selectedRouteId);
+  const routeVehicles   = selectedRoute ? vehicles.filter((v) => v.routeId === selectedRoute.id) : [];
+  const totalFare       = selectedRoute ? selectedRoute.fare : 0;
 
-  const totalFare = selectedRoute ? selectedRoute.fare : 0;
+  const handleRouteFound = useCallback((summary: RouteSummary) => {
+    setRouteSummary(summary);
+    setRoutingError(null);
+    setIsRouting(false);
+  }, []);
+
+  const handleRoutingError = useCallback((msg: string) => {
+    setRoutingError(msg);
+    setIsRouting(false);
+  }, []);
 
   return (
     <div className="flex flex-col h-screen bg-gray-50">
       <NavBar />
 
       <div className="flex flex-1 overflow-hidden">
-        {/* Sidebar */}
+        {/* ── Sidebar ── */}
         <aside className="w-80 bg-white border-r border-gray-200 flex flex-col overflow-y-auto">
           <div className="p-4 border-b border-gray-100">
             <h2 className="text-gray-800 text-sm">Commuter</h2>
             <p className="text-gray-400 text-xs mt-0.5">Plan your trip with live transit info</p>
           </div>
 
+          {/* ── Trip planner ── */}
           <div className="p-4 space-y-3 border-b border-gray-100">
             {/* Origin */}
             <div>
@@ -118,12 +152,19 @@ export default function CommuterDashboard() {
                   placeholder="Your starting point"
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
                 />
-                {originQuery && <button onClick={() => { setOriginQuery(""); setOrigin(null); }} className="absolute right-2 top-2.5 text-gray-300"><X size={13} /></button>}
+                {originQuery && (
+                  <button onClick={() => { setOriginQuery(""); setOrigin(null); }} className="absolute right-2 top-2.5 text-gray-300">
+                    <X size={13} />
+                  </button>
+                )}
               </div>
               {originSuggestions.length > 0 && (
                 <div className="border border-gray-200 rounded-lg mt-1 shadow-sm overflow-hidden">
                   {originSuggestions.map((p) => (
-                    <button key={p.name} onClick={() => { setOrigin(p); setOriginQuery(p.name); }} className="w-full text-left px-3 py-1.5 text-xs hover:bg-blue-50 text-gray-600 border-b border-gray-100 last:border-0">{p.name}</button>
+                    <button key={p.name} onClick={() => { setOrigin(p); setOriginQuery(p.name); }}
+                      className="w-full text-left px-3 py-1.5 text-xs hover:bg-blue-50 text-gray-600 border-b border-gray-100 last:border-0">
+                      {p.name}
+                    </button>
                   ))}
                 </div>
               )}
@@ -141,18 +182,25 @@ export default function CommuterDashboard() {
                   placeholder="Where are you going?"
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
                 />
-                {destQuery && <button onClick={() => { setDestQuery(""); setDest(null); }} className="absolute right-2 top-2.5 text-gray-300"><X size={13} /></button>}
+                {destQuery && (
+                  <button onClick={() => { setDestQuery(""); setDest(null); }} className="absolute right-2 top-2.5 text-gray-300">
+                    <X size={13} />
+                  </button>
+                )}
               </div>
               {destSuggestions.length > 0 && (
                 <div className="border border-gray-200 rounded-lg mt-1 shadow-sm overflow-hidden">
                   {destSuggestions.map((p) => (
-                    <button key={p.name} onClick={() => { setDest(p); setDestQuery(p.name); }} className="w-full text-left px-3 py-1.5 text-xs hover:bg-blue-50 text-gray-600 border-b border-gray-100 last:border-0">{p.name}</button>
+                    <button key={p.name} onClick={() => { setDest(p); setDestQuery(p.name); }}
+                      className="w-full text-left px-3 py-1.5 text-xs hover:bg-blue-50 text-gray-600 border-b border-gray-100 last:border-0">
+                      {p.name}
+                    </button>
                   ))}
                 </div>
               )}
             </div>
 
-            {/* Arrival time */}
+            {/* Arrive by */}
             <div>
               <label className="text-xs text-gray-500 mb-1 flex items-center gap-1">
                 <Clock size={11} /> Arrive by
@@ -166,7 +214,78 @@ export default function CommuterDashboard() {
             </div>
           </div>
 
-          {/* Transit filter */}
+          {/* ── LRM route summary ── */}
+          {origin && dest && (
+            <div className="p-4 border-b border-gray-100">
+              {isRouting && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full border-2 border-blue-500 border-t-transparent animate-spin" />
+                  <p className="text-xs text-blue-700">Calculating road route…</p>
+                </div>
+              )}
+
+              {routeSummary && !isRouting && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg overflow-hidden">
+                  <div className="p-3">
+                    <p className="text-xs text-blue-800 mb-2">Road route found</p>
+                    <div className="flex gap-3">
+                      <div className="flex items-center gap-1.5">
+                        <Ruler size={13} className="text-blue-500" />
+                        <span className="text-xs text-blue-700">{formatDistance(routeSummary.totalDistance)}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <Clock size={13} className="text-blue-500" />
+                        <span className="text-xs text-blue-700">{formatDuration(routeSummary.totalTime)}</span>
+                      </div>
+                    </div>
+                  </div>
+                  {routeSummary.instructions.length > 0 && (
+                    <>
+                      <button
+                        onClick={() => setShowDirections((v) => !v)}
+                        className="w-full flex items-center justify-between px-3 py-2 bg-blue-100 hover:bg-blue-200 text-xs text-blue-700 transition-colors border-t border-blue-200"
+                      >
+                        <span>Turn-by-turn directions</span>
+                        {showDirections ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                      </button>
+                      {showDirections && (
+                        <div className="max-h-48 overflow-y-auto divide-y divide-blue-100">
+                          {routeSummary.instructions.map((ins, i) => (
+                            <div key={i} className="px-3 py-2">
+                              <p className="text-xs text-blue-800">{ins.text}</p>
+                              {ins.distance > 0 && (
+                                <p className="text-xs text-blue-500 mt-0.5">{formatDistance(ins.distance)}</p>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+
+              {routingError && (
+                <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
+                  <p className="text-xs text-orange-700">Could not find a road route.</p>
+                  <p className="text-xs text-orange-500 mt-0.5">{routingError}</p>
+                </div>
+              )}
+
+              {showAlert && (
+                <div className="mt-3 bg-red-50 border border-red-200 rounded-lg p-3">
+                  <div className="flex items-center gap-2 mb-1">
+                    <AlertTriangle size={13} className="text-red-500" />
+                    <p className="text-xs text-red-700">Traffic on your route</p>
+                  </div>
+                  <p className="text-xs text-red-500 mb-2">Try an alternate route or ride.</p>
+                  <button onClick={() => setShowAlert(false)} className="text-xs text-red-600 hover:underline">Dismiss</button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Transit type filter ── */}
           <div className="p-4 border-b border-gray-100">
             <p className="text-xs text-gray-500 mb-2">Transit Type</p>
             <div className="flex gap-1 flex-wrap">
@@ -184,15 +303,15 @@ export default function CommuterDashboard() {
             </div>
           </div>
 
-          {/* Routes list */}
+          {/* ── Routes list ── */}
           <div className="p-4 border-b border-gray-100">
             <p className="text-xs text-gray-500 mb-2">Available Routes</p>
             <div className="space-y-2">
               {filteredRoutes.map((r) => {
                 const rv = vehicles.filter((v) => v.routeId === r.id);
                 const totalSeats = rv.reduce((sum, v) => sum + v.seatsTotal, 0);
-                const occupied = rv.reduce((sum, v) => sum + v.seatsOccupied, 0);
-                const available = totalSeats - occupied;
+                const occupied   = rv.reduce((sum, v) => sum + v.seatsOccupied, 0);
+                const available  = totalSeats - occupied;
                 return (
                   <button
                     key={r.id}
@@ -220,9 +339,9 @@ export default function CommuterDashboard() {
             </div>
           </div>
 
-          {/* Selected route detail */}
+          {/* ── Selected route detail ── */}
           {selectedRoute && (
-            <div className="p-4 border-b border-gray-100">
+            <div className="p-4">
               <p className="text-xs text-gray-500 mb-2">Selected Route Detail</p>
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
                 <p className="text-sm text-blue-800">{selectedRoute.designation} — {selectedRoute.name}</p>
@@ -232,7 +351,7 @@ export default function CommuterDashboard() {
                   <ChevronRight size={12} />
                   <span>{selectedRoute.endPoint}</span>
                 </div>
-                {routeVehicles.length > 0 && routeVehicles.map((v) => (
+                {routeVehicles.map((v) => (
                   <div key={v.id} className="mt-2 bg-white rounded p-2 border border-blue-100">
                     <p className="text-xs text-gray-600">{vehicleEmoji(v.type)} {v.plateNo}</p>
                     <div className="flex items-center gap-2 mt-1">
@@ -253,22 +372,15 @@ export default function CommuterDashboard() {
             </div>
           )}
 
-          {/* Traffic alert */}
-          {showAlert && (
-            <div className="p-4">
-              <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-                <div className="flex items-center gap-2 mb-1">
-                  <AlertTriangle size={13} className="text-red-500" />
-                  <p className="text-xs text-red-700">Traffic on your route</p>
-                </div>
-                <p className="text-xs text-red-500 mb-2">Try an alternate route or ride.</p>
-                <button onClick={() => setShowAlert(false)} className="text-xs text-red-600 hover:underline">Dismiss</button>
-              </div>
-            </div>
-          )}
+          {/* ── Fare Calculator ── */}
+          <FareCalculator
+            distanceMeters={routeSummary?.totalDistance ?? null}
+            durationSeconds={routeSummary?.totalTime ?? null}
+          />
+
         </aside>
 
-        {/* Map */}
+        {/* ── Map ── */}
         <main className="flex-1 relative">
           {loading ? (
             <div className="flex items-center justify-center h-full text-gray-400 text-sm">Loading map…</div>
@@ -284,44 +396,33 @@ export default function CommuterDashboard() {
                 url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
               />
 
-              {/* Traffic */}
+              {/* Traffic overlays — road-following coloured bands */}
               {traffic.map((seg) => (
-                <Polyline
-                  key={seg.id}
-                  positions={[[seg.latStart, seg.lngStart], [seg.latEnd, seg.lngEnd]]}
+                <RoutingMachine
+                  key={`traffic-${seg.id}`}
+                  waypoints={[[seg.latStart, seg.lngStart], [seg.latEnd, seg.lngEnd]]}
                   color={trafficColors[seg.level]}
-                  weight={6}
-                  opacity={0.7}
-                >
-                  <Popup>
-                    <div className="text-sm">
-                      <p className="font-semibold">{seg.name}</p>
-                      <p className="capitalize" style={{ color: trafficColors[seg.level] }}>{seg.level} traffic</p>
-                    </div>
-                  </Popup>
-                </Polyline>
+                  weight={8}
+                  opacity={0.65}
+                  showHalo={false}
+                />
               ))}
 
-              {/* Routes */}
+              {/* Fixed transit routes — road-following via OSRM */}
               {filteredRoutes.map((r) => (
-                <Polyline
+                <RoutingMachine
                   key={r.id}
-                  positions={r.waypoints}
-                  color={selectedRouteId === r.id ? "#2563eb" : "#94a3b8"}
-                  weight={selectedRouteId === r.id ? 4 : 2}
-                  dashArray={selectedRouteId === r.id ? undefined : "5 5"}
-                  opacity={selectedRouteId && selectedRouteId !== r.id ? 0.4 : 0.85}
-                >
-                  <Popup>
-                    <div className="text-sm">
-                      <p className="font-semibold">{r.designation} — {r.name}</p>
-                      <p className="text-gray-500">Fare: ₱{r.fare}</p>
-                    </div>
-                  </Popup>
-                </Polyline>
+                  waypoints={r.waypoints}
+                  color={
+                    selectedRouteId === r.id
+                      ? (vehicleColors[r.type] ?? "#2563eb")
+                      : "#94a3b8"
+                  }
+                  weight={selectedRouteId === r.id ? 5 : 2}
+                />
               ))}
 
-              {/* Vehicles */}
+              {/* Vehicle markers */}
               {filteredVehicles.map((v) => (
                 <Marker key={v.id} position={[v.lat, v.lng]} icon={vehicleIcon(v.type)}>
                   <Popup>
@@ -342,7 +443,20 @@ export default function CommuterDashboard() {
                 </Marker>
               ))}
 
-              {/* Origin/Dest pins */}
+              {/* LRM road-following route for the trip planner */}
+              {origin && dest && (
+                <RoutingMachine
+                  key={`${origin.lat},${origin.lng}-${dest.lat},${dest.lng}`}
+                  origin={[origin.lat, origin.lng]}
+                  dest={[dest.lat, dest.lng]}
+                  color="#2563eb"
+                  weight={5}
+                  onRouteFound={handleRouteFound}
+                  onRoutingError={handleRoutingError}
+                />
+              )}
+
+              {/* Origin / Destination pins */}
               {origin && (
                 <Marker position={[origin.lat, origin.lng]} icon={pinIcon("#22c55e", "Start")}>
                   <Popup>{origin.name}</Popup>
@@ -352,14 +466,6 @@ export default function CommuterDashboard() {
                 <Marker position={[dest.lat, dest.lng]} icon={pinIcon("#ef4444", "End")}>
                   <Popup>{dest.name}</Popup>
                 </Marker>
-              )}
-              {origin && dest && (
-                <Polyline
-                  positions={[[origin.lat, origin.lng], [dest.lat, dest.lng]]}
-                  color="#3b82f6"
-                  weight={3}
-                  dashArray="8 4"
-                />
               )}
             </MapContainer>
           )}

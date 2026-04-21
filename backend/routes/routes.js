@@ -11,7 +11,10 @@ function parseRoute(row) {
     endPoint: row.end_point,
     fare: parseFloat(row.fare),
     type: row.routeType,
-    waypoints: JSON.parse(row.waypoints || "[]"),
+    // mysql2 auto-parses JSON columns — only parse if it's still a string
+    waypoints: typeof row.waypoints === "string"
+      ? JSON.parse(row.waypoints || "[]")
+      : (row.waypoints ?? []),
   };
 }
 

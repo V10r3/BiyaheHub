@@ -66,40 +66,95 @@ const MOCK_ROUTES: Route[] = [
     endPoint: "Parkmall",
     fare: 13,
     type: "jeepney",
-    waypoints: [[10.295, 123.89], [10.3, 123.895], [10.305, 123.9], [10.31, 123.905]],
+    waypoints: [
+      [10.2950, 123.8900], [10.2937, 123.9009], [10.3000, 123.9060],
+      [10.3116, 123.9185], [10.3350, 123.9280], [10.3517, 123.9358],
+    ],
   },
   {
     id: 2,
-    name: "Carbon to SM Cebu",
+    name: "Carbon to SM City",
     designation: "04C",
     startPoint: "Carbon Market",
     endPoint: "SM City Cebu",
     fare: 13,
     type: "jeepney",
-    waypoints: [[10.291, 123.901], [10.295, 123.905], [10.3, 123.908], [10.308, 123.91]],
+    waypoints: [
+      [10.2922, 123.9012], [10.2937, 123.9009], [10.3050, 123.8960],
+      [10.3150, 123.9000], [10.3116, 123.9185],
+    ],
   },
   {
     id: 3,
+    name: "Carbon to Talamban",
+    designation: "17B",
+    startPoint: "Carbon Market",
+    endPoint: "Talamban",
+    fare: 15,
+    type: "jeepney",
+    waypoints: [
+      [10.2922, 123.9012], [10.2937, 123.9009], [10.3050, 123.8960],
+      [10.3185, 123.9054], [10.3277, 123.9055], [10.3450, 123.9080],
+      [10.3671, 123.9103],
+    ],
+  },
+  {
+    id: 4,
+    name: "Bulacao to Carbon",
+    designation: "10C",
+    startPoint: "Bulacao",
+    endPoint: "Carbon Market",
+    fare: 13,
+    type: "jeepney",
+    waypoints: [
+      [10.2700, 123.8750], [10.2800, 123.8830], [10.2900, 123.8880],
+      [10.2950, 123.8900], [10.2937, 123.9009], [10.2922, 123.9012],
+    ],
+  },
+  {
+    id: 5,
     name: "South Terminal to North Terminal",
     designation: "B-01",
     startPoint: "South Bus Terminal",
     endPoint: "North Bus Terminal",
     fare: 25,
     type: "bus",
-    waypoints: [[10.28, 123.88], [10.29, 123.89], [10.3, 123.9], [10.32, 123.905]],
+    waypoints: [
+      [10.2803, 123.8827], [10.2980, 123.8930], [10.3100, 123.8940],
+      [10.3185, 123.9054], [10.3400, 123.9100], [10.3550, 123.9108],
+    ],
+  },
+  {
+    id: 6,
+    name: "Ayala to Mactan Airport",
+    designation: "B-02",
+    startPoint: "Ayala Center Cebu",
+    endPoint: "Mactan Airport",
+    fare: 35,
+    type: "bus",
+    waypoints: [
+      [10.3185, 123.9054], [10.3116, 123.9185], [10.3300, 123.9270],
+      [10.3200, 123.9500], [10.3074, 123.9797],
+    ],
   },
 ];
 
 const MOCK_TRAFFIC: TrafficSegment[] = [
-  { id: 1, name: "Colon Street",   level: "heavy",    latStart: 10.294, lngStart: 123.9,   latEnd: 10.298, lngEnd: 123.903 },
-  { id: 2, name: "Osmeña Blvd",    level: "moderate", latStart: 10.298, lngStart: 123.893, latEnd: 10.308, lngEnd: 123.895 },
-  { id: 3, name: "N. Bacalso Ave", level: "clear",    latStart: 10.28,  lngStart: 123.885, latEnd: 10.29,  lngEnd: 123.888 },
+  { id: 1, name: "Colon Street",      level: "heavy",    latStart: 10.2922, lngStart: 123.9000, latEnd: 10.2980, lngEnd: 123.9030 },
+  { id: 2, name: "Osmeña Blvd",       level: "moderate", latStart: 10.2980, lngStart: 123.8930, latEnd: 10.3100, lngEnd: 123.8950 },
+  { id: 3, name: "N. Bacalso Ave",    level: "clear",    latStart: 10.2700, lngStart: 123.8750, latEnd: 10.2900, lngEnd: 123.8880 },
+  { id: 4, name: "Jones Avenue",      level: "moderate", latStart: 10.2950, lngStart: 123.8960, latEnd: 10.3185, lngEnd: 123.9054 },
+  { id: 5, name: "N. Escario Street", level: "clear",    latStart: 10.3000, lngStart: 123.9060, latEnd: 10.3116, lngEnd: 123.9185 },
+  { id: 6, name: "Mandaue Bridge",    level: "heavy",    latStart: 10.3300, lngStart: 123.9270, latEnd: 10.3400, lngEnd: 123.9350 },
 ];
 
 const MOCK_VEHICLES: Vehicle[] = [
-  { id: 1, driverId: 1, routeId: 1, type: "jeepney", plateNo: "ABC-1234", seatsTotal: 16, seatsOccupied: 9,  lat: 10.297, lng: 123.892 },
-  { id: 2, driverId: 2, routeId: 2, type: "jeepney", plateNo: "DEF-5678", seatsTotal: 16, seatsOccupied: 3,  lat: 10.293, lng: 123.903 },
-  { id: 3, driverId: 3, routeId: 3, type: "bus",     plateNo: "BUS-0001", seatsTotal: 50, seatsOccupied: 35, lat: 10.284, lng: 123.882 },
+  { id: 1, driverId: 1, routeId: 1, type: "jeepney", plateNo: "ABC-1234", seatsTotal: 16, seatsOccupied:  9, lat: 10.3000, lng: 123.9060 },
+  { id: 2, driverId: 2, routeId: 2, type: "jeepney", plateNo: "DEF-5678", seatsTotal: 16, seatsOccupied:  3, lat: 10.2980, lng: 123.9020 },
+  { id: 3, driverId: 3, routeId: 3, type: "jeepney", plateNo: "GHI-9012", seatsTotal: 16, seatsOccupied: 12, lat: 10.3185, lng: 123.9054 },
+  { id: 4, driverId: 1, routeId: 4, type: "jeepney", plateNo: "JKL-3456", seatsTotal: 16, seatsOccupied:  7, lat: 10.2850, lng: 123.8850 },
+  { id: 5, driverId: 2, routeId: 5, type: "bus",     plateNo: "BUS-0001", seatsTotal: 50, seatsOccupied: 35, lat: 10.3100, lng: 123.8940 },
+  { id: 6, driverId: 3, routeId: 6, type: "bus",     plateNo: "BUS-0002", seatsTotal: 50, seatsOccupied: 28, lat: 10.3200, lng: 123.9400 },
 ];
 
 // ─── Fetch helper ─────────────────────────────────────────────────────────────
@@ -122,6 +177,14 @@ function isNetworkError(err: unknown): boolean {
   return err instanceof TypeError;
 }
 
+/** Logs a consistent fallback warning with the actual reason. */
+function warnFallback(resource: string, err: unknown): void {
+  const reason = isNetworkError(err)
+    ? "backend unreachable (is the server running?)"
+    : `backend error — ${(err as Error).message}`;
+  console.info(`[API] Using mock ${resource}: ${reason}`);
+}
+
 // ─── Auth API ─────────────────────────────────────────────────────────────────
 
 export const authApi = {
@@ -132,9 +195,8 @@ export const authApi = {
         body: JSON.stringify({ email, password }),
       });
     } catch (err) {
-      if (!isNetworkError(err)) throw err; // re-throw HTTP errors (wrong credentials, etc.)
-      // Fallback: derive accountType from demo email prefix for dev convenience
-      console.warn("[API] Backend unreachable — using mock login");
+      if (!isNetworkError(err)) throw err;
+      warnFallback("login", err);
       const accountType: AccountType =
         email.startsWith("puvpuj") ? "puvpuj" :
         email.startsWith("private") ? "private" : "commuter";
@@ -149,8 +211,8 @@ export const authApi = {
         body: JSON.stringify({ name, email, password, accountType }),
       });
     } catch (err) {
-      if (!isNetworkError(err)) throw err; // re-throw HTTP errors (validation, duplicate email, etc.)
-      console.warn("[API] Backend unreachable — using mock register");
+      if (!isNetworkError(err)) throw err;
+      warnFallback("register", err);
       return { id: Date.now(), name, email, accountType };
     }
   },
@@ -162,8 +224,8 @@ export const routesApi = {
   async getAll(): Promise<Route[]> {
     try {
       return await apiFetch<Route[]>("/routes");
-    } catch {
-      console.warn("[API] Backend unreachable — using mock routes");
+    } catch (err) {
+      warnFallback("routes", err);
       return MOCK_ROUTES;
     }
   },
@@ -171,8 +233,8 @@ export const routesApi = {
   async getByType(type: Route["type"]): Promise<Route[]> {
     try {
       return await apiFetch<Route[]>(`/routes/${type}`);
-    } catch {
-      console.warn("[API] Backend unreachable — using mock routes");
+    } catch (err) {
+      warnFallback("routes", err);
       return MOCK_ROUTES.filter((r) => r.type === type);
     }
   },
@@ -184,8 +246,8 @@ export const trafficApi = {
   async getCurrent(): Promise<TrafficSegment[]> {
     try {
       return await apiFetch<TrafficSegment[]>("/traffic");
-    } catch {
-      console.warn("[API] Backend unreachable — using mock traffic");
+    } catch (err) {
+      warnFallback("traffic", err);
       return MOCK_TRAFFIC;
     }
   },
@@ -197,8 +259,8 @@ export const vehiclesApi = {
   async getAll(): Promise<Vehicle[]> {
     try {
       return await apiFetch<Vehicle[]>("/vehicles");
-    } catch {
-      console.warn("[API] Backend unreachable — using mock vehicles");
+    } catch (err) {
+      warnFallback("vehicles", err);
       return MOCK_VEHICLES;
     }
   },
@@ -209,8 +271,8 @@ export const vehiclesApi = {
         method: "PUT",
         body: JSON.stringify({ seatsOccupied }),
       });
-    } catch {
-      console.warn("[API] Backend unreachable — seat update skipped");
+    } catch (err) {
+      warnFallback("seat update", err);
     }
   },
 
@@ -220,8 +282,8 @@ export const vehiclesApi = {
         method: "PUT",
         body: JSON.stringify({ lat, lng }),
       });
-    } catch {
-      console.warn("[API] Backend unreachable — location update skipped");
+    } catch (err) {
+      warnFallback("location update", err);
     }
   },
 };

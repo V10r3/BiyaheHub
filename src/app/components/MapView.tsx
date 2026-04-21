@@ -3,6 +3,7 @@ import { MapContainer, TileLayer, Polyline, Marker, Popup, useMap } from "react-
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import type { Route, TrafficSegment, Vehicle } from "../services/api";
+import { RoutingMachine } from "./RoutingMachine";
 
 // Fix default marker icons for Leaflet + Vite
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -86,44 +87,30 @@ export function MapView({
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
 
-      {/* Traffic overlays */}
+      {/* Traffic overlays — road-following coloured bands */}
       {traffic.map((seg) => (
-        <Polyline
-          key={seg.id}
-          positions={[
-            [seg.latStart, seg.lngStart],
-            [seg.latEnd, seg.lngEnd],
-          ]}
+        <RoutingMachine
+          key={`traffic-${seg.id}`}
+          waypoints={[[seg.latStart, seg.lngStart], [seg.latEnd, seg.lngEnd]]}
           color={trafficColors[seg.level]}
-          weight={6}
-          opacity={0.7}
-        >
-          <Popup>
-            <div className="text-sm">
-              <p className="font-semibold">{seg.name}</p>
-              <p style={{ color: trafficColors[seg.level] }} className="capitalize">{seg.level} traffic</p>
-            </div>
-          </Popup>
-        </Polyline>
+          weight={8}
+          opacity={0.65}
+          showHalo={false}
+        />
       ))}
 
-      {/* Routes */}
+      {/* Routes — road-following via OSRM */}
       {routes.map((route) => (
-        <Polyline
+        <RoutingMachine
           key={route.id}
-          positions={route.waypoints}
-          color={selectedRouteId === route.id ? "#2563eb" : vehicleColors[route.type] ?? "#6b7280"}
+          waypoints={route.waypoints}
+          color={
+            selectedRouteId === route.id
+              ? "#2563eb"
+              : (vehicleColors[route.type] ?? "#6b7280")
+          }
           weight={selectedRouteId === route.id ? 5 : 3}
-          dashArray={selectedRouteId === route.id ? undefined : "6 4"}
-          opacity={selectedRouteId && selectedRouteId !== route.id ? 0.35 : 0.85}
-        >
-          <Popup>
-            <div className="text-sm">
-              <p className="font-semibold">{route.designation} — {route.name}</p>
-              <p className="text-gray-500 capitalize">{route.type} · ₱{route.fare}</p>
-            </div>
-          </Popup>
-        </Polyline>
+        />
       ))}
 
       {/* Vehicles */}

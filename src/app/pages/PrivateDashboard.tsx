@@ -1,24 +1,27 @@
 import { useEffect, useState, useCallback } from "react";
 import { NavBar } from "../components/NavBar";
-import { MapView } from "../components/MapView";
 import { trafficApi, type TrafficSegment } from "../services/api";
-import { MapPin, Navigation, AlertTriangle, RotateCcw, Search, X } from "lucide-react";
+import {
+  MapPin, Navigation, AlertTriangle, RotateCcw, X,
+  Clock, Ruler, ChevronDown, ChevronUp,
+} from "lucide-react";
 import { useMapEvents } from "react-leaflet";
 import { MapContainer, TileLayer, Polyline, Marker, Popup } from "react-leaflet";
 import L from "leaflet";
+import { RoutingMachine, formatDistance, formatDuration, type RouteSummary } from "../components/RoutingMachine";
 
-// Cebu-area mock places for search suggestions
+// ── Cebu-area place list ───────────────────────────────────────────────────────
 const PLACES = [
-  { name: "SM City Cebu", lat: 10.3116, lng: 123.9185 },
-  { name: "Ayala Center Cebu", lat: 10.3185, lng: 123.9054 },
-  { name: "Parkmall Mandaue", lat: 10.3517, lng: 123.9358 },
-  { name: "Cebu IT Park", lat: 10.3277, lng: 123.9055 },
-  { name: "University of Cebu", lat: 10.2956, lng: 123.8984 },
-  { name: "Carbon Market", lat: 10.2922, lng: 123.9012 },
-  { name: "Mactan Airport", lat: 10.3074, lng: 123.9797 },
-  { name: "South Bus Terminal", lat: 10.2803, lng: 123.8827 },
-  { name: "Colon Street", lat: 10.2937, lng: 123.9009 },
-  { name: "Talamban Cebu", lat: 10.3671, lng: 123.9103 },
+  { name: "SM City Cebu",        lat: 10.3116, lng: 123.9185 },
+  { name: "Ayala Center Cebu",   lat: 10.3185, lng: 123.9054 },
+  { name: "Parkmall Mandaue",    lat: 10.3517, lng: 123.9358 },
+  { name: "Cebu IT Park",        lat: 10.3277, lng: 123.9055 },
+  { name: "University of Cebu",  lat: 10.2956, lng: 123.8984 },
+  { name: "Carbon Market",       lat: 10.2922, lng: 123.9012 },
+  { name: "Mactan Airport",      lat: 10.3074, lng: 123.9797 },
+  { name: "South Bus Terminal",  lat: 10.2803, lng: 123.8827 },
+  { name: "Colon Street",        lat: 10.2937, lng: 123.9009 },
+  { name: "Talamban Cebu",       lat: 10.3671, lng: 123.9103 },
 ];
 
 const trafficColors: Record<string, string> = {
@@ -40,22 +43,26 @@ interface ClickHandlerProps {
 }
 function ClickHandler({ onClick }: ClickHandlerProps) {
   useMapEvents({
-    click(e) {
-      onClick(e.latlng.lat, e.latlng.lng);
-    },
+    click(e) { onClick(e.latlng.lat, e.latlng.lng); },
   });
   return null;
 }
 
 export default function PrivateDashboard() {
-  const [traffic, setTraffic] = useState<TrafficSegment[]>([]);
-  const [originQuery, setOriginQuery] = useState("");
-  const [destQuery, setDestQuery] = useState("");
-  const [origin, setOrigin] = useState<{ name: string; lat: number; lng: number } | null>(null);
-  const [dest, setDest] = useState<{ name: string; lat: number; lng: number } | null>(null);
-  const [clickMode, setClickMode] = useState<"origin" | "dest" | null>(null);
-  const [showAlert, setShowAlert] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [traffic, setTraffic]           = useState<TrafficSegment[]>([]);
+  const [originQuery, setOriginQuery]   = useState("");
+  const [destQuery, setDestQuery]       = useState("");
+  const [origin, setOrigin]             = useState<{ name: string; lat: number; lng: number } | null>(null);
+  const [dest, setDest]                 = useState<{ name: string; lat: number; lng: number } | null>(null);
+  const [clickMode, setClickMode]       = useState<"origin" | "dest" | null>(null);
+  const [showAlert, setShowAlert]       = useState(false);
+  const [loading, setLoading]           = useState(true);
+
+  // LRM route info
+  const [routeSummary, setRouteSummary]     = useState<RouteSummary | null>(null);
+  const [routingError, setRoutingError]     = useState<string | null>(null);
+  const [showDirections, setShowDirections] = useState(false);
+  const [isRouting, setIsRouting]           = useState(false);
 
   useEffect(() => {
     trafficApi.getCurrent().then((t) => {
@@ -68,6 +75,9 @@ export default function PrivateDashboard() {
     if (origin && dest) {
       const heavy = traffic.some((t) => t.level === "heavy");
       setShowAlert(heavy);
+      setRouteSummary(null);
+      setRoutingError(null);
+      setIsRouting(true);
     }
   }, [origin, dest, traffic]);
 
@@ -79,13 +89,14 @@ export default function PrivateDashboard() {
   );
 
   const handleMapClick = useCallback((lat: number, lng: number) => {
+    const label = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
     if (clickMode === "origin") {
-      setOrigin({ name: `${lat.toFixed(4)}, ${lng.toFixed(4)}`, lat, lng });
-      setOriginQuery(`${lat.toFixed(4)}, ${lng.toFixed(4)}`);
+      setOrigin({ name: label, lat, lng });
+      setOriginQuery(label);
       setClickMode(null);
     } else if (clickMode === "dest") {
-      setDest({ name: `${lat.toFixed(4)}, ${lng.toFixed(4)}`, lat, lng });
-      setDestQuery(`${lat.toFixed(4)}, ${lng.toFixed(4)}`);
+      setDest({ name: label, lat, lng });
+      setDestQuery(label);
       setClickMode(null);
     }
   }, [clickMode]);
@@ -108,18 +119,33 @@ export default function PrivateDashboard() {
     setDestQuery("");
     setShowAlert(false);
     setClickMode(null);
+    setRouteSummary(null);
+    setRoutingError(null);
+    setIsRouting(false);
+    setShowDirections(false);
   };
+
+  const handleRouteFound = useCallback((summary: RouteSummary) => {
+    setRouteSummary(summary);
+    setRoutingError(null);
+    setIsRouting(false);
+  }, []);
+
+  const handleRoutingError = useCallback((msg: string) => {
+    setRoutingError(msg);
+    setIsRouting(false);
+  }, []);
 
   return (
     <div className="flex flex-col h-screen bg-gray-50">
       <NavBar />
 
       <div className="flex flex-1 overflow-hidden">
-        {/* Sidebar */}
+        {/* ── Sidebar ── */}
         <aside className="w-72 bg-white border-r border-gray-200 flex flex-col overflow-y-auto">
           <div className="p-4 border-b border-gray-100">
             <h2 className="text-gray-800 text-sm">Private Driver</h2>
-            <p className="text-gray-400 text-xs mt-0.5">Plan your route with live traffic</p>
+            <p className="text-gray-400 text-xs mt-0.5">Road-following route with live traffic</p>
           </div>
 
           <div className="p-4 space-y-4">
@@ -155,10 +181,7 @@ export default function PrivateDashboard() {
                 </div>
               )}
               <div className="flex gap-2 mt-2">
-                <button
-                  onClick={handleGPS}
-                  className="flex items-center gap-1 text-xs text-blue-600 hover:underline"
-                >
+                <button onClick={handleGPS} className="flex items-center gap-1 text-xs text-blue-600 hover:underline">
                   <Navigation size={12} /> Use GPS
                 </button>
                 <button
@@ -209,14 +232,72 @@ export default function PrivateDashboard() {
               </button>
             </div>
 
-            {/* Clear button */}
+            {/* Clear */}
             {(origin || dest) && (
-              <button
-                onClick={clearRoute}
-                className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600"
-              >
+              <button onClick={clearRoute} className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600">
                 <RotateCcw size={12} /> Clear route
               </button>
+            )}
+
+            {/* Routing status */}
+            {origin && dest && isRouting && (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full border-2 border-blue-500 border-t-transparent animate-spin" />
+                <p className="text-xs text-blue-700">Calculating road route…</p>
+              </div>
+            )}
+
+            {/* Route summary */}
+            {routeSummary && !isRouting && (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg overflow-hidden">
+                <div className="p-3">
+                  <p className="text-xs text-blue-800 mb-2">Route found via road network</p>
+                  <div className="flex gap-3">
+                    <div className="flex items-center gap-1.5">
+                      <Ruler size={13} className="text-blue-500" />
+                      <span className="text-xs text-blue-700">{formatDistance(routeSummary.totalDistance)}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <Clock size={13} className="text-blue-500" />
+                      <span className="text-xs text-blue-700">{formatDuration(routeSummary.totalTime)}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Turn-by-turn toggle */}
+                {routeSummary.instructions.length > 0 && (
+                  <>
+                    <button
+                      onClick={() => setShowDirections((v) => !v)}
+                      className="w-full flex items-center justify-between px-3 py-2 bg-blue-100 hover:bg-blue-200 text-xs text-blue-700 transition-colors border-t border-blue-200"
+                    >
+                      <span>Turn-by-turn directions</span>
+                      {showDirections ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                    </button>
+
+                    {showDirections && (
+                      <div className="max-h-48 overflow-y-auto divide-y divide-blue-100">
+                        {routeSummary.instructions.map((ins, i) => (
+                          <div key={i} className="px-3 py-2">
+                            <p className="text-xs text-blue-800">{ins.text}</p>
+                            {ins.distance > 0 && (
+                              <p className="text-xs text-blue-500 mt-0.5">{formatDistance(ins.distance)}</p>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* Routing error */}
+            {routingError && (
+              <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
+                <p className="text-xs text-orange-700">Could not calculate road route.</p>
+                <p className="text-xs text-orange-500 mt-0.5">{routingError}</p>
+              </div>
             )}
 
             {/* Traffic alert */}
@@ -236,15 +317,6 @@ export default function PrivateDashboard() {
               </div>
             )}
 
-            {/* Route info */}
-            {origin && dest && (
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                <p className="text-xs text-blue-700 mb-1">Route plotted</p>
-                <p className="text-xs text-blue-500">From: {origin.name}</p>
-                <p className="text-xs text-blue-500">To: {dest.name}</p>
-              </div>
-            )}
-
             {/* Traffic legend */}
             <div>
               <p className="text-xs text-gray-500 mb-2">Traffic Legend</p>
@@ -258,7 +330,7 @@ export default function PrivateDashboard() {
           </div>
         </aside>
 
-        {/* Map */}
+        {/* ── Map ── */}
         <main className="flex-1 relative">
           {clickMode && (
             <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[999] bg-white border border-blue-300 shadow-lg rounded-full px-4 py-2 flex items-center gap-2 text-sm text-blue-700">
@@ -282,29 +354,32 @@ export default function PrivateDashboard() {
               />
               <ClickHandler onClick={handleMapClick} />
 
-              {/* Traffic */}
+              {/* Traffic overlays — road-following coloured bands */}
               {traffic.map((seg) => (
-                <Polyline
-                  key={seg.id}
-                  positions={[[seg.latStart, seg.lngStart], [seg.latEnd, seg.lngEnd]]}
+                <RoutingMachine
+                  key={`traffic-${seg.id}`}
+                  waypoints={[[seg.latStart, seg.lngStart], [seg.latEnd, seg.lngEnd]]}
                   color={trafficColors[seg.level]}
-                  weight={6}
-                  opacity={0.7}
-                >
-                  <Popup><div className="text-sm"><p className="font-semibold">{seg.name}</p><p className="capitalize" style={{ color: trafficColors[seg.level] }}>{seg.level} traffic</p></div></Popup>
-                </Polyline>
+                  weight={8}
+                  opacity={0.65}
+                  showHalo={false}
+                />
               ))}
 
-              {/* Route line */}
+              {/* LRM road-following route */}
               {origin && dest && (
-                <Polyline
-                  positions={[[origin.lat, origin.lng], [dest.lat, dest.lng]]}
+                <RoutingMachine
+                  key={`${origin.lat},${origin.lng}-${dest.lat},${dest.lng}`}
+                  origin={[origin.lat, origin.lng]}
+                  dest={[dest.lat, dest.lng]}
                   color="#3b82f6"
-                  weight={4}
-                  dashArray="8 4"
+                  weight={5}
+                  onRouteFound={handleRouteFound}
+                  onRoutingError={handleRoutingError}
                 />
               )}
 
+              {/* Origin / destination markers */}
               {origin && (
                 <Marker position={[origin.lat, origin.lng]} icon={createPin("#22c55e", "Start")}>
                   <Popup>{origin.name}</Popup>
