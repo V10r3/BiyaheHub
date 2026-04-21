@@ -3,7 +3,6 @@ import { MapContainer, TileLayer, Polyline, Marker, Popup, useMap } from "react-
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import type { Route, TrafficSegment, Vehicle } from "../services/api";
-import { RoutingMachine } from "./RoutingMachine";
 
 // Fix default marker icons for Leaflet + Vite
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -87,29 +86,27 @@ export function MapView({
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
 
-      {/* Traffic overlays — road-following coloured bands */}
+      {/* Traffic overlays — static coloured bands (no OSRM) */}
       {traffic.map((seg) => (
-        <RoutingMachine
+        <Polyline
           key={`traffic-${seg.id}`}
-          waypoints={[[seg.latStart, seg.lngStart], [seg.latEnd, seg.lngEnd]]}
-          color={trafficColors[seg.level]}
-          weight={8}
-          opacity={0.65}
-          showHalo={false}
+          positions={[[seg.latStart, seg.lngStart], [seg.latEnd, seg.lngEnd]]}
+          pathOptions={{ color: trafficColors[seg.level], weight: 8, opacity: 0.65 }}
         />
       ))}
 
-      {/* Routes — road-following via OSRM */}
+      {/* Routes — static polylines (no OSRM) */}
       {routes.map((route) => (
-        <RoutingMachine
+        <Polyline
           key={route.id}
-          waypoints={route.waypoints}
-          color={
-            selectedRouteId === route.id
+          positions={route.waypoints}
+          pathOptions={{
+            color: selectedRouteId === route.id
               ? "#2563eb"
-              : (vehicleColors[route.type] ?? "#6b7280")
-          }
-          weight={selectedRouteId === route.id ? 5 : 3}
+              : (vehicleColors[route.type] ?? "#6b7280"),
+            weight: selectedRouteId === route.id ? 5 : 3,
+            opacity: selectedRouteId === route.id ? 0.9 : 0.6,
+          }}
         />
       ))}
 

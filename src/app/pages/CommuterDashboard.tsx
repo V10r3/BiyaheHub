@@ -26,15 +26,27 @@ const vehicleColors: Record<string, string> = {
 };
 
 const PLACES = [
-  { name: "SM City Cebu",       lat: 10.3116, lng: 123.9185 },
-  { name: "Ayala Center Cebu",  lat: 10.3185, lng: 123.9054 },
-  { name: "Parkmall Mandaue",   lat: 10.3517, lng: 123.9358 },
-  { name: "Cebu IT Park",       lat: 10.3277, lng: 123.9055 },
-  { name: "University of Cebu", lat: 10.2956, lng: 123.8984 },
-  { name: "Carbon Market",      lat: 10.2922, lng: 123.9012 },
-  { name: "Colon Street",       lat: 10.2937, lng: 123.9009 },
-  { name: "Talamban Cebu",      lat: 10.3671, lng: 123.9103 },
-  { name: "Urgello",            lat: 10.295,  lng: 123.89   },
+  { name: "SM City Cebu",          lat: 10.3116, lng: 123.9185 },
+  { name: "Ayala Center Cebu",     lat: 10.3185, lng: 123.9054 },
+  { name: "Parkmall Mandaue",      lat: 10.3517, lng: 123.9358 },
+  { name: "Cebu IT Park",          lat: 10.3277, lng: 123.9055 },
+  { name: "University of Cebu",    lat: 10.2956, lng: 123.8984 },
+  { name: "Carbon Market",         lat: 10.2922, lng: 123.9012 },
+  { name: "Colon Street",          lat: 10.2937, lng: 123.9009 },
+  { name: "Talamban Cebu",         lat: 10.3671, lng: 123.9103 },
+  { name: "Urgello",               lat: 10.2950, lng: 123.8900 },
+  { name: "Fuente Osmeña",         lat: 10.3024, lng: 123.8944 },
+  { name: "Lahug",                 lat: 10.3261, lng: 123.8978 },
+  { name: "Banilad",               lat: 10.3373, lng: 123.9000 },
+  { name: "Mandaue City",          lat: 10.3236, lng: 123.9448 },
+  { name: "Talisay City",          lat: 10.2444, lng: 123.8456 },
+  { name: "Bulacao",               lat: 10.2700, lng: 123.8750 },
+  { name: "Basak",                 lat: 10.2833, lng: 123.8867 },
+  { name: "Mambaling",             lat: 10.2700, lng: 123.8900 },
+  { name: "Punta Princesa",        lat: 10.3011, lng: 123.8756 },
+  { name: "South Bus Terminal",    lat: 10.2803, lng: 123.8827 },
+  { name: "North Bus Terminal",    lat: 10.3550, lng: 123.9108 },
+  { name: "Mactan Airport",        lat: 10.3074, lng: 123.9797 },
 ];
 
 function vehicleEmoji(type: string) {
@@ -305,38 +317,27 @@ export default function CommuterDashboard() {
 
           {/* ── Routes list ── */}
           <div className="p-4 border-b border-gray-100">
-            <p className="text-xs text-gray-500 mb-2">Available Routes</p>
-            <div className="space-y-2">
-              {filteredRoutes.map((r) => {
-                const rv = vehicles.filter((v) => v.routeId === r.id);
-                const totalSeats = rv.reduce((sum, v) => sum + v.seatsTotal, 0);
-                const occupied   = rv.reduce((sum, v) => sum + v.seatsOccupied, 0);
-                const available  = totalSeats - occupied;
-                return (
-                  <button
-                    key={r.id}
-                    onClick={() => setSelectedRouteId(r.id)}
-                    className={`w-full text-left px-3 py-2 rounded-lg border text-sm transition-all ${
-                      selectedRouteId === r.id ? "border-blue-500 bg-blue-50" : "border-gray-200 hover:border-gray-300"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-blue-700 text-xs">{r.designation}</span>
-                      <span className="text-gray-400 text-xs">₱{r.fare}</span>
-                    </div>
-                    <p className="text-gray-700 text-xs mt-0.5">{r.name}</p>
-                    {rv.length > 0 && (
-                      <p className="text-xs text-gray-400 mt-0.5">
-                        {available > 0 ? `${available} seats available` : "Full"}
-                      </p>
-                    )}
-                  </button>
-                );
-              })}
-              {filteredRoutes.length === 0 && (
-                <p className="text-xs text-gray-400 text-center py-2">No routes found</p>
-              )}
-            </div>
+            <label className="text-xs text-gray-500 mb-1.5 block">Available Routes</label>
+            {filteredRoutes.length === 0 ? (
+              <p className="text-xs text-gray-400 py-1">No routes found</p>
+            ) : (
+              <select
+                value={selectedRouteId ?? ""}
+                onChange={(e) => setSelectedRouteId(Number(e.target.value))}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 cursor-pointer"
+              >
+                {filteredRoutes.map((r) => {
+                  const rv        = vehicles.filter((v) => v.routeId === r.id);
+                  const available = rv.reduce((sum, v) => sum + (v.seatsTotal - v.seatsOccupied), 0);
+                  const seatLabel = rv.length > 0 ? (available > 0 ? ` · ${available} seats` : " · Full") : "";
+                  return (
+                    <option key={r.id} value={r.id}>
+                      {r.designation} — {r.name} · ₱{r.fare}{seatLabel}
+                    </option>
+                  );
+                })}
+              </select>
+            )}
           </div>
 
           {/* ── Selected route detail ── */}
@@ -396,29 +397,27 @@ export default function CommuterDashboard() {
                 url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
               />
 
-              {/* Traffic overlays — road-following coloured bands */}
+              {/* Traffic overlays — static coloured bands */}
               {traffic.map((seg) => (
-                <RoutingMachine
+                <Polyline
                   key={`traffic-${seg.id}`}
-                  waypoints={[[seg.latStart, seg.lngStart], [seg.latEnd, seg.lngEnd]]}
-                  color={trafficColors[seg.level]}
-                  weight={8}
-                  opacity={0.65}
-                  showHalo={false}
+                  positions={[[seg.latStart, seg.lngStart], [seg.latEnd, seg.lngEnd]]}
+                  pathOptions={{ color: trafficColors[seg.level], weight: 8, opacity: 0.65 }}
                 />
               ))}
 
-              {/* Fixed transit routes — road-following via OSRM */}
+              {/* Fixed transit routes — static polylines (no OSRM) */}
               {filteredRoutes.map((r) => (
-                <RoutingMachine
+                <Polyline
                   key={r.id}
-                  waypoints={r.waypoints}
-                  color={
-                    selectedRouteId === r.id
+                  positions={r.waypoints}
+                  pathOptions={{
+                    color: selectedRouteId === r.id
                       ? (vehicleColors[r.type] ?? "#2563eb")
-                      : "#94a3b8"
-                  }
-                  weight={selectedRouteId === r.id ? 5 : 2}
+                      : "#94a3b8",
+                    weight: selectedRouteId === r.id ? 5 : 2,
+                    opacity: selectedRouteId === r.id ? 0.9 : 0.6,
+                  }}
                 />
               ))}
 

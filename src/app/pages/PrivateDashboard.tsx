@@ -354,15 +354,12 @@ export default function PrivateDashboard() {
               />
               <ClickHandler onClick={handleMapClick} />
 
-              {/* Traffic overlays — road-following coloured bands */}
+              {/* Traffic overlays — static coloured bands (no OSRM) */}
               {traffic.map((seg) => (
-                <RoutingMachine
+                <Polyline
                   key={`traffic-${seg.id}`}
-                  waypoints={[[seg.latStart, seg.lngStart], [seg.latEnd, seg.lngEnd]]}
-                  color={trafficColors[seg.level]}
-                  weight={8}
-                  opacity={0.65}
-                  showHalo={false}
+                  positions={[[seg.latStart, seg.lngStart], [seg.latEnd, seg.lngEnd]]}
+                  pathOptions={{ color: trafficColors[seg.level], weight: 8, opacity: 0.65 }}
                 />
               ))}
 
