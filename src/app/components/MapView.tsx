@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { MapContainer, TileLayer, Polyline, Marker, Popup, useMap } from "react-leaflet";
+import { MapContainer, TileLayer, Polyline, Marker, Popup, useMap, useMapEvents } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import type { Route, TrafficSegment, Vehicle } from "../services/api";
@@ -62,6 +62,12 @@ interface MapViewProps {
   originPin?: [number, number] | null;
   destPin?: [number, number] | null;
   onMapClick?: (latlng: [number, number]) => void;
+  children?: React.ReactNode;
+}
+
+function ClickHandler({ onMapClick }: { onMapClick: (latlng: [number, number]) => void }) {
+  useMapEvents({ click(e) { onMapClick([e.latlng.lat, e.latlng.lng]); } });
+  return null;
 }
 
 export function MapView({
@@ -72,6 +78,8 @@ export function MapView({
   selectedRouteId = null,
   originPin = null,
   destPin = null,
+  onMapClick,
+  children,
 }: MapViewProps) {
   return (
     <MapContainer
@@ -85,6 +93,8 @@ export function MapView({
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
+
+      {onMapClick && <ClickHandler onMapClick={onMapClick} />}
 
       {/* Traffic overlays — static coloured bands (no OSRM) */}
       {traffic.map((seg) => (
@@ -142,6 +152,9 @@ export function MapView({
           <Popup>Destination</Popup>
         </Marker>
       )}
+
+      {/* Slot for RoutingMachine or other overlays */}
+      {children}
     </MapContainer>
   );
 }

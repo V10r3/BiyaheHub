@@ -1,13 +1,13 @@
 import { createBrowserRouter, redirect } from "react-router";
 import Landing from "./pages/Landing";
-import PUVDashboard from "./pages/PUVDashboard";
-import PrivateDashboard from "./pages/PrivateDashboard";
+import DriverDashboard from "./pages/DriverDashboard";
 import CommuterDashboard from "./pages/CommuterDashboard";
 
 export const router = createBrowserRouter([
   { path: "/", Component: Landing },
-  { path: "/dashboard/puvpuj", Component: PUVDashboard },
-  { path: "/dashboard/private", Component: PrivateDashboard },
+  // Both PUV/PUJ and Private drivers share the unified DriverDashboard
+  { path: "/dashboard/puvpuj",   Component: DriverDashboard },
+  { path: "/dashboard/private",  Component: DriverDashboard },
   { path: "/dashboard/commuter", Component: CommuterDashboard },
   { path: "*", loader: () => redirect("/") },
 ]);
