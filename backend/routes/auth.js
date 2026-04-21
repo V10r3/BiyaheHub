@@ -35,6 +35,7 @@ router.post("/register", async (req, res) => {
     );
     res.status(201).json({ id: result.insertId, name, email, accountType });
   } catch (err) {
+    console.error("[register] DB error:", err.message);
     res.status(500).json({ error: err.message });
   }
 });

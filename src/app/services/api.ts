@@ -116,6 +116,12 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   return res.json();
 }
 
+/** Returns true when the error is a network failure (backend unreachable),
+ *  false when the backend responded with an HTTP error (4xx / 5xx). */
+function isNetworkError(err: unknown): boolean {
+  return err instanceof TypeError;
+}
+
 // ─── Auth API ─────────────────────────────────────────────────────────────────
 
 export const authApi = {
@@ -125,7 +131,8 @@ export const authApi = {
         method: "POST",
         body: JSON.stringify({ email, password }),
       });
-    } catch {
+    } catch (err) {
+      if (!isNetworkError(err)) throw err; // re-throw HTTP errors (wrong credentials, etc.)
       // Fallback: derive accountType from demo email prefix for dev convenience
       console.warn("[API] Backend unreachable — using mock login");
       const accountType: AccountType =
@@ -141,7 +148,8 @@ export const authApi = {
         method: "POST",
         body: JSON.stringify({ name, email, password, accountType }),
       });
-    } catch {
+    } catch (err) {
+      if (!isNetworkError(err)) throw err; // re-throw HTTP errors (validation, duplicate email, etc.)
       console.warn("[API] Backend unreachable — using mock register");
       return { id: Date.now(), name, email, accountType };
     }
