@@ -10,6 +10,7 @@ import routesRouter       from "./routes/routes";
 import trafficRouter      from "./routes/traffic";
 import vehiclesRouter     from "./routes/vehicles";
 import userVehiclesRouter from "./routes/userVehicles";
+import fuelPricesRouter   from "./routes/fuelPrices";
 
 const app  = express();
 const PORT = Number(process.env.PORT) || 3001;
@@ -38,6 +39,7 @@ app.get("/", (_req: Request, res: Response) => {
       "PUT  /api/user-vehicle",
       "GET  /api/user-vehicle/fuel-logs",
       "POST /api/user-vehicle/fuel-logs",
+      "GET  /api/fuel-prices/:fuelType",
       "GET  /api/health",
     ],
   });
@@ -49,6 +51,7 @@ app.use("/api/routes",       routesRouter);
 app.use("/api/traffic",      trafficRouter);
 app.use("/api/vehicles",     vehiclesRouter);
 app.use("/api/user-vehicle", userVehiclesRouter);
+app.use("/api/fuel-prices",  fuelPricesRouter);
 
 // ── Health check ──────────────────────────────────────────────────────────────
 app.get("/api/health", async (_req: Request, res: Response) => {

@@ -39,6 +39,10 @@ router.post("/register", async (req: Request, res: Response) => {
   if (!name || !email || !password || !accountType)
     return res.status(400).json({ error: "All fields required" });
 
+  const VALID_TYPES = ["driver", "commuter"];
+  if (!VALID_TYPES.includes(accountType))
+    return res.status(400).json({ error: `accountType must be one of: ${VALID_TYPES.join(", ")}` });
+
   try {
     const [existing] = await pool.query<RowDataPacket[]>(
       "SELECT id FROM users WHERE email = ?",

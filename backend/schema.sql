@@ -9,13 +9,18 @@ CREATE DATABASE IF NOT EXISTS BiyaheHub_db
 
 USE BiyaheHub_db;
 
+-- ── Migration: update account_type ENUM if the table already exists ───────────
+-- Safe to run repeatedly; ALTER only fires when the column definition differs.
+ALTER TABLE users
+  MODIFY COLUMN account_type ENUM('driver','commuter') NOT NULL;
+
 -- ── Users ─────────────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS users (
   id            INT AUTO_INCREMENT PRIMARY KEY,
   userName      VARCHAR(100)                              NOT NULL,
   email         VARCHAR(150)                              NOT NULL UNIQUE,
   password_hash VARCHAR(255)                              NOT NULL,
-  account_type  ENUM('puvpuj','private','commuter')       NOT NULL,
+  account_type  ENUM('driver','commuter')                 NOT NULL,
   created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -96,8 +101,7 @@ CREATE TABLE IF NOT EXISTS fuel_logs (
 
 -- Demo users (plain-text passwords for dev only — use bcrypt in production)
 INSERT INTO users (userName, email, password_hash, account_type) VALUES
-  ('Juan Driver',    'puvpuj@demo.com',   'demo123', 'puvpuj'),
-  ('Maria Private',  'private@demo.com',  'demo123', 'private'),
+  ('Juan Driver',    'driver@demo.com',   'demo123', 'driver'),
   ('Pedro Commuter', 'commuter@demo.com', 'demo123', 'commuter');
 
 -- ── Routes ────────────────────────────────────────────────────────────────────

@@ -96,15 +96,6 @@ export function MapView({
 
       {onMapClick && <ClickHandler onMapClick={onMapClick} />}
 
-      {/* Traffic overlays — static coloured bands (no OSRM) */}
-      {traffic.map((seg) => (
-        <Polyline
-          key={`traffic-${seg.id}`}
-          positions={[[seg.latStart, seg.lngStart], [seg.latEnd, seg.lngEnd]]}
-          pathOptions={{ color: trafficColors[seg.level], weight: 8, opacity: 0.65 }}
-        />
-      ))}
-
       {/* Routes — static polylines (no OSRM) */}
       {routes.map((route) => (
         <Polyline
@@ -112,9 +103,9 @@ export function MapView({
           positions={route.waypoints}
           pathOptions={{
             color: selectedRouteId === route.id
-              ? "#2563eb"
-              : (vehicleColors[route.type] ?? "#6b7280"),
-            weight: selectedRouteId === route.id ? 5 : 3,
+              ? (vehicleColors[route.type] ?? "#2563eb")
+              : "#94a3b8",
+            weight: selectedRouteId === route.id ? 5 : 2,
             opacity: selectedRouteId === route.id ? 0.9 : 0.6,
           }}
         />

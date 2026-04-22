@@ -1,13 +1,12 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router";
-import { Bus, Car, Users, MapPin, Eye, EyeOff } from "lucide-react";
+import { Bus, Users, MapPin, Eye, EyeOff } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import type { AccountType } from "../services/api";
 
 const accountTypes: { type: AccountType; label: string; desc: string; icon: typeof Bus }[] = [
-  { type: "puvpuj",   label: "PUV/PUJ Driver",  desc: "Manage your fixed route & track passengers", icon: Bus },
-  { type: "private",  label: "Private Driver",   desc: "Navigate with traffic-aware routing",        icon: Car },
-  { type: "commuter", label: "Commuter",          desc: "Plan your trip with live transit info",       icon: Users },
+  { type: "driver",   label: "Driver",   desc: "Manage your route & track fuel", icon: Bus   },
+  { type: "commuter", label: "Commuter", desc: "Plan your trip with live transit info", icon: Users },
 ];
 
 export default function Landing() {
@@ -24,8 +23,7 @@ export default function Landing() {
   const [error, setError] = useState("");
 
   const dashboardPath: Record<AccountType, string> = {
-    puvpuj:   "/dashboard/puvpuj",
-    private:  "/dashboard/private",
+    driver:   "/dashboard/driver",
     commuter: "/dashboard/commuter",
   };
 
@@ -87,7 +85,7 @@ export default function Landing() {
             {mode === "register" && (
               <div>
                 <label className="block text-xs text-gray-500 mb-2">I am a...</label>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 gap-2">
                   {accountTypes.map(({ type, label, icon: Icon }) => (
                     <button
                       key={type}

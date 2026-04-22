@@ -4,10 +4,10 @@ import {
   ChevronDown, Zap, CheckCircle,
 } from "lucide-react";
 import {
-  userVehicleApi,
   type UserVehicle,
   type FuelType,
 } from "../services/api";
+import { useVehicle } from "../context/VehicleContext";
 import {
   fmtEfficiency,
   fmtVolume,
@@ -33,7 +33,9 @@ async function fetchModels(make: string, year: number): Promise<string[]> {
     `${NHTSA}/GetModelsForMakeYear/make/${encodeURIComponent(make)}/modelyear/${year}?format=json`
   );
   const data = await res.json();
-  return (data.Results as { Model_Name: string }[]).map((r) => r.Model_Name).sort();
+  const raw = (data.Results as { Model_Name: string }[]).map((r) => r.Model_Name).sort();
+  // De-duplicate — NHTSA occasionally returns the same model name more than once
+  return [...new Set(raw)];
 }
 
 // ─── EPA Fuel Economy helpers (engine variants + fuel type) ───────────────────
@@ -150,7 +152,9 @@ const BLANK: Omit<UserVehicle, "userId"> = {
 
 // ─── Component ────────────────────────────────────────────────────────────────
 export function VehicleProfile({ userId, unit, onVehicleSaved }: Props) {
-  const [vehicle, setVehicle] = useState<UserVehicle | null>(null);
+  // ── Vehicle session (localStorage-backed context) ──────────────────────────
+  const { vehicle, saveVehicle } = useVehicle();
+
   const [editing, setEditing] = useState(false);
   const [mode,    setMode]    = useState<EditMode>("search");
   const [form,    setForm]    = useState({ ...BLANK });
@@ -180,15 +184,10 @@ export function VehicleProfile({ userId, unit, onVehicleSaved }: Props) {
       : String(BLANK.mileage)
   );
 
-  // ── Load saved vehicle ─────────────────────────────────────────────────────
+  // ── Notify parent whenever context vehicle changes ─────────────────────────
   useEffect(() => {
-    userVehicleApi.get(userId).then((v) => {
-      if (v) {
-        setVehicle(v);
-        onVehicleSaved(v); // notify parent so FuelTracker receives the vehicle immediately
-      }
-    });
-  }, [userId]); // eslint-disable-line
+    if (vehicle) onVehicleSaved(vehicle);
+  }, [vehicle]); // eslint-disable-line
 
   // ── Sync efficiency input when unit changes ────────────────────────────────
   useEffect(() => {
@@ -328,11 +327,13 @@ export function VehicleProfile({ userId, unit, onVehicleSaved }: Props) {
   const handleSave = async () => {
     if (!form.make || !form.model || !form.year) return;
     setSaving(true);
-    const v = await userVehicleApi.save({ ...form, userId, isManual: mode === "manual" });
-    setVehicle(v);
-    onVehicleSaved(v);
-    setEditing(false);
-    setSaving(false);
+    try {
+      // saveVehicle calls the API AND writes to the localStorage session cache
+      await saveVehicle({ ...form, userId, isManual: mode === "manual" });
+      setEditing(false);
+    } finally {
+      setSaving(false);
+    }
   };
 
   // ── Display card (read-only) ───────────────────────────────────────────────

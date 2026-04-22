@@ -1,11 +1,16 @@
 /**
  * BiyaheHub — LTFRB Fare Calculator
  *
- * Sources:
- *  • Non-Aircon Modern/Electric PUJ  — LTFRB, effective March 19, 2026
- *  • Aircon Modern/Electric PUJ      — LTFRB, effective October 8, 2023
+ * Sources / References:
+ *  • Non-Aircon Modern/Electric PUJ  — LTFRB MC 2022-040 / standard PUJ rate
+ *    Minimum fare: ₱13.00 (first 4 km), +₱1.80/km thereafter
+ *  • Aircon Modern/Electric PUJ      — LTFRB MC 2023-054 (effective Oct 8 2023)
+ *    Minimum fare: ₱15.00 (first 4 km), +₱2.20/km thereafter
  *  • Taxi                            — LTFRB (current)
+ *    Flag-down: ₱50.00, +₱13.50/km, +₱2.00/min
+ *  • 20% discount mandated for students, elderly, and PWD — RA 9994 / BP 344
  *
+ * Discount is applied to the total fare (not pre-baked into per-km rates).
  * All fares rounded to the nearest ₱0.25 per LTFRB rules.
  */
 
@@ -18,19 +23,25 @@ export function roundNearest25(value: number): number {
 }
 
 // ── Non-Aircon Modern/Electric PUJ ──────────────────────────────────────────
+// LTFRB MC 2022-040 — standard Cebu modern PUJ rate
+// Minimum: ₱13.00 covers the first 4 km; +₱1.80/km beyond 4 km
 const NON_AIRCON = {
-  regular:    { base: 17.00, perKm: 2.00 },
-  discounted: { base: 13.60, perKm: 1.60 },
-  label: "Non-Aircon PUJ",
-  effectiveDate: "March 19, 2026",
+  base:          13.00, // minimum fare, covers first 4 km
+  perKm:          1.80, // per-km after the first 4 km
+  baseKm:            4, // km covered by the base fare
+  label:         "Non-Aircon Modern PUJ",
+  effectiveDate: "LTFRB MC 2022-040",
 } as const;
 
 // ── Aircon Modern/Electric PUJ ───────────────────────────────────────────────
+// LTFRB MC 2023-054 — effective October 8, 2023
+// Minimum: ₱15.00 covers the first 4 km; +₱2.20/km beyond 4 km
 const AIRCON = {
-  regular:    { base: 15.00, perKm: 2.20 },
-  discounted: { base: 12.00, perKm: 1.76 },
-  label: "Aircon PUJ",
-  effectiveDate: "October 8, 2023",
+  base:          15.00, // minimum fare, covers first 4 km
+  perKm:          2.20, // per-km after the first 4 km
+  baseKm:            4, // km covered by the base fare
+  label:         "Aircon Modern PUJ",
+  effectiveDate: "LTFRB MC 2023-054 (Oct 8, 2023)",
 } as const;
 
 // ── Taxi ─────────────────────────────────────────────────────────────────────
@@ -38,51 +49,56 @@ const TAXI = {
   flagDown:  50.00,
   perKm:     13.50,
   perMinute:  2.00,
-  discount:   0.20, // 20% off for students/elderly/disabled
-  label: "Taxi",
+  label:     "Taxi",
 } as const;
 
+/** 20% mandatory discount rate (RA 9994 / BP 344) */
+const DISCOUNT_RATE = 0.20;
+
 export interface FareBreakdown {
-  vehicleClass:  VehicleClass;
-  passengerType: PassengerType;
-  distanceKm:    number;
-  durationMin?:  number;    // taxi only
-  baseFare:      number;
-  additionalFare: number;
-  timeFare?:     number;    // taxi only
-  subtotal:      number;
-  discountAmount: number;
-  totalFare:     number;
-  label:         string;
+  vehicleClass:   VehicleClass;
+  passengerType:  PassengerType;
+  distanceKm:     number;
+  durationMin?:   number;     // taxi only
+  baseFare:       number;     // base / flag-down fare (regular rate)
+  additionalFare: number;     // distance charge beyond base km (regular rate)
+  timeFare?:      number;     // taxi time charge
+  subtotal:       number;     // baseFare + additionalFare [+ timeFare]
+  discountAmount: number;     // 20% of subtotal (0 for regular passengers)
+  totalFare:      number;     // final fare paid
+  label:          string;
   effectiveDate?: string;
-  rateNote:      string;
+  rateNote:       string;
 }
 
-/** Jeepney (non-aircon or aircon) */
+// ── Jeepney (Non-Aircon or Aircon) ───────────────────────────────────────────
 function calcJeep(
   rates: typeof NON_AIRCON | typeof AIRCON,
   distanceKm: number,
   passengerType: PassengerType,
 ): FareBreakdown {
-  const r = passengerType === "regular" ? rates.regular : rates.discounted;
-  const isClass = rates === NON_AIRCON ? "nonAirconJeep" : "airconJeep";
+  const vehicleClass = rates === NON_AIRCON ? "nonAirconJeep" : "airconJeep";
 
-  const successKm      = Math.max(0, distanceKm - 4);
-  const baseFare       = r.base;
-  const additionalFare = roundNearest25(successKm * r.perKm);
+  // Always compute using the regular (full) rate first
+  const excessKm       = Math.max(0, distanceKm - rates.baseKm);
+  const baseFare       = rates.base;
+  const additionalFare = roundNearest25(excessKm * rates.perKm);
   const subtotal       = roundNearest25(baseFare + additionalFare);
 
-  // For the "regular" path the subtotal IS the total; no additional discount.
-  // For "discounted" path, rates.discounted already bakes in the 20% cut, so no extra discount.
-  const discountAmount = 0;
-  const totalFare      = subtotal;
+  // Apply 20% discount to the total for qualifying passengers (RA 9994 / BP 344)
+  const discountAmount = passengerType === "discounted"
+    ? roundNearest25(subtotal * DISCOUNT_RATE)
+    : 0;
+  const totalFare = roundNearest25(subtotal - discountAmount);
 
-  const rateNote = passengerType === "regular"
-    ? `₱${r.base.toFixed(2)} base (first 4 km) + ₱${r.perKm.toFixed(2)}/km`
-    : `₱${r.base.toFixed(2)} base (first 4 km) + ₱${r.perKm.toFixed(2)}/km (20% discount applied)`;
+  const rateNote = [
+    `₱${rates.base.toFixed(2)} minimum (first ${rates.baseKm} km)`,
+    `+ ₱${rates.perKm.toFixed(2)}/km after ${rates.baseKm} km`,
+    passengerType === "discounted" ? "· 20% discount on total (RA 9994)" : "",
+  ].filter(Boolean).join(" ");
 
   return {
-    vehicleClass: isClass as VehicleClass,
+    vehicleClass: vehicleClass as VehicleClass,
     passengerType,
     distanceKm,
     baseFare,
@@ -96,7 +112,7 @@ function calcJeep(
   };
 }
 
-/** Taxi */
+// ── Taxi ─────────────────────────────────────────────────────────────────────
 function calcTaxi(
   distanceKm: number,
   durationMin: number,
@@ -106,12 +122,17 @@ function calcTaxi(
   const additionalFare = roundNearest25(distanceKm * TAXI.perKm);
   const timeFare       = roundNearest25(durationMin * TAXI.perMinute);
   const subtotal       = roundNearest25(baseFare + additionalFare + timeFare);
-  const discountAmount = passengerType === "discounted" ? roundNearest25(subtotal * TAXI.discount) : 0;
-  const totalFare      = roundNearest25(subtotal - discountAmount);
 
-  const rateNote = `₱${TAXI.flagDown} flag-down + ₱${TAXI.perKm}/km + ₱${TAXI.perMinute}/min${
-    passengerType === "discounted" ? " (20% discount)" : ""
-  }`;
+  // 20% discount applied to total for qualifying passengers
+  const discountAmount = passengerType === "discounted"
+    ? roundNearest25(subtotal * DISCOUNT_RATE)
+    : 0;
+  const totalFare = roundNearest25(subtotal - discountAmount);
+
+  const rateNote = [
+    `₱${TAXI.flagDown} flag-down + ₱${TAXI.perKm}/km + ₱${TAXI.perMinute}/min`,
+    passengerType === "discounted" ? "· 20% discount on total (RA 9994)" : "",
+  ].filter(Boolean).join(" ");
 
   return {
     vehicleClass: "taxi",
@@ -137,16 +158,13 @@ export function computeFare(
   durationMin = 0,
 ): FareBreakdown {
   switch (vehicleClass) {
-    case "nonAirconJeep":
-      return calcJeep(NON_AIRCON, distanceKm, passengerType);
-    case "airconJeep":
-      return calcJeep(AIRCON, distanceKm, passengerType);
-    case "taxi":
-      return calcTaxi(distanceKm, durationMin, passengerType);
+    case "nonAirconJeep": return calcJeep(NON_AIRCON, distanceKm, passengerType);
+    case "airconJeep":    return calcJeep(AIRCON,     distanceKm, passengerType);
+    case "taxi":          return calcTaxi(distanceKm, durationMin, passengerType);
   }
 }
 
-/** Compute all three vehicle classes at once (handy for a comparison card) */
+/** Compute all three vehicle classes at once (for comparison card) */
 export function computeAllFares(
   distanceKm: number,
   passengerType: PassengerType,

@@ -32,7 +32,7 @@ const PASSENGER_OPTS: { key: PassengerType; label: string }[] = [
 ];
 
 function formatPeso(val: number) {
-  return `₱${val.toFixed(2)}`;
+  return `₱${(Number(val) || 0).toFixed(2)}`;
 }
 
 export function FareCalculator({ distanceMeters, durationSeconds }: Props) {
@@ -120,7 +120,7 @@ export function FareCalculator({ distanceMeters, durationSeconds }: Props) {
           {/* Distance input */}
           <div>
             <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-1">
-              Distance (km){isAutoFilled && <span className="normal-case text-blue-400 ml-1">from OSRM route</span>}
+              Distance (km){isAutoFilled && <span className="normal-case text-blue-400 ml-1">from route</span>}
             </p>
             <input
               type="number"
@@ -137,7 +137,7 @@ export function FareCalculator({ distanceMeters, durationSeconds }: Props) {
           {vehicleClass === "taxi" && (
             <div>
               <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-1">
-                Travel time (min){durationSeconds != null && <span className="normal-case text-blue-400 ml-1">from OSRM route</span>}
+                Travel time (min){durationSeconds != null && <span className="normal-case text-blue-400 ml-1">from route</span>}
               </p>
               <input
                 type="number"
@@ -203,7 +203,7 @@ export function FareCalculator({ distanceMeters, durationSeconds }: Props) {
                     <span className="text-gray-700">{formatPeso(breakdown.baseFare)}</span>
                   </div>
                   <div className="flex justify-between text-[11px]">
-                    <span className="text-gray-500">Additional (distance)</span>
+                    <span className="text-gray-500">Additional ({Math.max(0, breakdown.distanceKm - 4).toFixed(2)} km excess)</span>
                     <span className="text-gray-700">{formatPeso(breakdown.additionalFare)}</span>
                   </div>
                   {breakdown.timeFare != null && (
@@ -214,7 +214,7 @@ export function FareCalculator({ distanceMeters, durationSeconds }: Props) {
                   )}
                   {breakdown.discountAmount > 0 && (
                     <div className="flex justify-between text-[11px]">
-                      <span className="text-green-600">Discount (20%)</span>
+                      <span className="text-green-600">Discount (20% — RA 9994)</span>
                       <span className="text-green-600">−{formatPeso(breakdown.discountAmount)}</span>
                     </div>
                   )}

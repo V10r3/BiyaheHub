@@ -182,7 +182,11 @@ export function RoutingMachine({
     return () => {
       clearTimeout(timer);
       if (controlRef.current) {
-        map.removeControl(controlRef.current);
+        // Abort any in-flight OSRM XHR FIRST so its callback never fires
+        // against a map that's already been detached (prevents the
+        // "Cannot read properties of null (reading 'removeLayer')" crash).
+        try { controlRef.current.getRouter?.()?.abort?.(); } catch (_) { /* noop */ }
+        try { map.removeControl(controlRef.current); } catch (_) { /* noop */ }
         controlRef.current = null;
       }
     };

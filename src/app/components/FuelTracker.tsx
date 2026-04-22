@@ -1,15 +1,16 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import {
-  Droplets, Plus, Calculator, TrendingDown, PhilippinePeso,
-  RefreshCw, ChevronDown, ChevronUp, Info,
+  Droplets, Plus, Calculator, TrendingDown, TrendingUp, PhilippinePeso,
+  RefreshCw, ChevronDown, ChevronUp, Info, Target, Pencil, Check, X,
+  Bell, BellOff, AlertTriangle, ShieldAlert,
 } from "lucide-react";
 import {
   fuelLogsApi, fuelPriceApi, userVehicleApi,
   type UserVehicle, type FuelLog, type FuelPrice,
 } from "../services/api";
 import {
-  fuelConsumedL, fmtVolume, fmtDistance, fmtEfficiency,
-  litersToGal, type UnitSystem,
+  fuelConsumedL, fmtDistance, fmtEfficiency,
+  litersToGal, l100kmToMpg, mpgToL100km, type UnitSystem,
 } from "../utils/fuelCalc";
 
 // ─── Props ────────────────────────────────────────────────────────────────────
@@ -17,7 +18,6 @@ interface Props {
   userId: number;
   unit: UnitSystem;
   vehicle: UserVehicle | null;
-  /** km from the active route (PUV waypoints length) or OSRM result */
   tripDistanceKm: number | null;
 }
 
@@ -26,16 +26,39 @@ function fmtPHP(amount: number) {
   return `₱${(Number(amount) || 0).toFixed(2)}`;
 }
 
-function isThisMonth(isoStr: string | undefined) {
+function isYesterday(isoStr: string | undefined) {
   if (!isoStr) return false;
   const d = new Date(isoStr);
+  const y = new Date();
+  y.setDate(y.getDate() - 1);
+  return (
+    d.getFullYear() === y.getFullYear() &&
+    d.getMonth()    === y.getMonth()    &&
+    d.getDate()     === y.getDate()
+  );
+}
+
+function isToday(isoStr: string | undefined) {
+  if (!isoStr) return false;
+  const d   = new Date(isoStr);
+  const now = new Date();
+  return (
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth()    === now.getMonth()    &&
+    d.getDate()     === now.getDate()
+  );
+}
+
+function isThisMonth(isoStr: string | undefined) {
+  if (!isoStr) return false;
+  const d   = new Date(isoStr);
   const now = new Date();
   return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
 }
 
 // ─── Tank gauge ───────────────────────────────────────────────────────────────
 function TankGauge({ current, max }: { current: number; max: number }) {
-  const pct = Math.min(max > 0 ? (current / max) * 100 : 0, 100);
+  const pct   = Math.min(max > 0 ? (current / max) * 100 : 0, 100);
   const color = pct > 50 ? "#22c55e" : pct > 20 ? "#f59e0b" : "#ef4444";
   return (
     <div className="relative w-full h-6 bg-gray-100 rounded-full overflow-hidden border border-gray-200">
@@ -53,29 +76,50 @@ function TankGauge({ current, max }: { current: number; max: number }) {
   );
 }
 
+// ─── localStorage keys ────────────────────────────────────────────────────────
+const goalKey   = (userId: number) => `biyahehub_fuel_goal_${userId}`;
+
+// ─── Notification helpers ─────────────────────────────────────────────────────
+/**
+ * How close to the goal before we warn (15% below = 85% of goal reached).
+ * e.g. goal = 10 L/100km → warn at 8.5 L/100km
+ */
+const WARNING_ZONE_PCT = 0.15;
+
+type AlertLevel = "approaching" | "exceeded" | null;
+
+function canUseNotifications() {
+  return typeof window !== "undefined" && "Notification" in window;
+}
+
+function pushBrowserNotif(title: string, body: string) {
+  if (!canUseNotifications() || Notification.permission !== "granted") return;
+  try {
+    new Notification(title, { body, icon: "/favicon.ico", tag: "fuel-goal" });
+  } catch {
+    // some browsers (e.g. iframe sandbox) throw even with permission
+  }
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 export function FuelTracker({ userId, unit, vehicle, tripDistanceKm }: Props) {
-  const [logs, setLogs]               = useState<FuelLog[]>([]);
-  const [showRefuel, setShowRefuel]   = useState(false);
-  const [showLogs, setShowLogs]       = useState(false);
+  const [logs, setLogs]             = useState<FuelLog[]>([]);
+  const [showRefuel, setShowRefuel] = useState(false);
+  const [showLogs, setShowLogs]     = useState(false);
 
   // Refuel form
-  const [liters, setLiters]           = useState("");
-  const [pricePerL, setPricePerL]     = useState("");
-  const [odometerKm, setOdometerKm]   = useState("");
-  const [notes, setNotes]             = useState("");
-  const [fetchingPrice, setFetching]  = useState(false);
-  const [livePrice, setLivePrice]     = useState<FuelPrice | null>(null);
-  const [savingLog, setSavingLog]     = useState(false);
+  const [liters, setLiters]         = useState("");
+  const [pricePerL, setPricePerL]   = useState("");
+  const [odometerKm, setOdometerKm] = useState("");
+  const [notes, setNotes]           = useState("");
+  const [fetchingPrice, setFetching]= useState(false);
+  const [livePrice, setLivePrice]   = useState<FuelPrice | null>(null);
+  const [savingLog, setSavingLog]   = useState(false);
 
-  // Fresh vehicle data fetched from API when refuel panel opens
   const [freshVehicle, setFreshVehicle] = useState<UserVehicle | null>(null);
-
-  // The vehicle to use for tank calculations — prefer fresh API data, fall back to prop
   const activeVehicle = freshVehicle ?? vehicle;
 
-  // Trip calculation
-  const [tripCalc, setTripCalc]       = useState<{
+  const [tripCalc, setTripCalc] = useState<{
     litersNeeded: number;
     estimatedCost: number;
     priceUsed: number;
@@ -83,20 +127,141 @@ export function FuelTracker({ userId, unit, vehicle, tripDistanceKm }: Props) {
   } | null>(null);
   const [calcLoading, setCalcLoading] = useState(false);
 
-  // Load logs on mount
+  // ── Minimum Consumption Goal (L/100km internally) ─────────────────────────
+  const [consumptionGoal, setConsumptionGoal] = useState<number>(() => {
+    const saved = localStorage.getItem(goalKey(userId));
+    return saved ? parseFloat(saved) : 10;
+  });
+  const [editingGoal, setEditingGoal] = useState(false);
+  const [goalInput, setGoalInput]     = useState("");
+
+  // ── Notification state ────────────────────────────────────────────────────
+  const [notifPermission, setNotifPermission] = useState<NotificationPermission>(() =>
+    canUseNotifications() ? Notification.permission : "denied"
+  );
+  const [alertLevel, setAlertLevel]       = useState<AlertLevel>(null);
+  const [alertDismissed, setAlertDismissed] = useState(false);
+
+  /** Tracks which levels have already fired a browser push this session. */
+  const firedRef = useRef<{ approaching: boolean; exceeded: boolean }>({
+    approaching: false,
+    exceeded: false,
+  });
+
+  // ── Derive actual L/100km BEFORE early return so effects can use it ────────
+  const actualL100km = Number(activeVehicle?.mileage) || 0;
+
+  // ── Sync goal to localStorage ─────────────────────────────────────────────
+  useEffect(() => {
+    localStorage.setItem(goalKey(userId), String(consumptionGoal));
+  }, [consumptionGoal, userId]);
+
+  // ── Reset fired flags when goal changes so new threshold gets fresh push ──
+  useEffect(() => {
+    firedRef.current = { approaching: false, exceeded: false };
+    setAlertDismissed(false);
+  }, [consumptionGoal]);
+
+  // ── Main notification effect ───────────────────────────────────────────────
+  useEffect(() => {
+    if (!activeVehicle || actualL100km <= 0 || consumptionGoal <= 0) return;
+
+    const ratio = actualL100km / consumptionGoal;
+
+    if (ratio >= 1.0) {
+      // Goal exceeded
+      if (!firedRef.current.exceeded) {
+        firedRef.current.exceeded    = true;
+        firedRef.current.approaching = true;
+        pushBrowserNotif(
+          "⛽ BiyaheHub — Consumption Goal Exceeded",
+          `Your vehicle is consuming ${actualL100km.toFixed(1)} L/100km, ` +
+          `which exceeds your goal of ${consumptionGoal.toFixed(1)} L/100km. ` +
+          `Consider reviewing your driving habits.`
+        );
+      }
+      setAlertLevel("exceeded");
+      setAlertDismissed(false);
+
+    } else if (ratio >= 1 - WARNING_ZONE_PCT) {
+      // Approaching goal (within 15%)
+      const remaining = consumptionGoal - actualL100km;
+      if (!firedRef.current.approaching) {
+        firedRef.current.approaching = true;
+        pushBrowserNotif(
+          "⚠️ BiyaheHub — Approaching Consumption Goal",
+          `Your vehicle is at ${actualL100km.toFixed(1)} L/100km — only ` +
+          `${remaining.toFixed(2)} L/100km away from your ` +
+          `${consumptionGoal.toFixed(1)} L/100km goal.`
+        );
+      }
+      setAlertLevel("approaching");
+      setAlertDismissed(false);
+
+    } else {
+      // Well within goal — clear
+      firedRef.current = { approaching: false, exceeded: false };
+      setAlertLevel(null);
+    }
+  }, [actualL100km, consumptionGoal, activeVehicle]);
+
+  // ── Permission request handler (must be user gesture) ─────────────────────
+  const requestPermission = useCallback(async () => {
+    if (!canUseNotifications()) return;
+    const result = await Notification.requestPermission();
+    setNotifPermission(result);
+    // Re-evaluate immediately so a pending alert fires right after grant
+    firedRef.current = { approaching: false, exceeded: false };
+  }, []);
+
+  // ── Unit changes while editing goal ───────────────────────────────────────
+  useEffect(() => {
+    if (!editingGoal) return;
+    setGoalInput(
+      unit === "imperial"
+        ? l100kmToMpg(consumptionGoal).toFixed(1)
+        : consumptionGoal.toFixed(1)
+    );
+  }, [unit]); // eslint-disable-line
+
+  const startEditGoal = () => {
+    setGoalInput(
+      unit === "imperial"
+        ? l100kmToMpg(consumptionGoal).toFixed(1)
+        : consumptionGoal.toFixed(1)
+    );
+    setEditingGoal(true);
+  };
+
+  const saveGoal = () => {
+    const num = parseFloat(goalInput);
+    if (!isNaN(num) && num > 0)
+      setConsumptionGoal(unit === "imperial" ? mpgToL100km(num) : num);
+    setEditingGoal(false);
+  };
+
+  const cancelGoal = () => setEditingGoal(false);
+
   useEffect(() => {
     fuelLogsApi.getAll(userId).then(setLogs);
   }, [userId]);
 
-  // ── Monthly stats ────────────────────────────────────────────────────────
+  // ── Derived stats ─────────────────────────────────────────────────────────
+  const yesterdayLogs    = logs.filter((l) => isYesterday(l.loggedAt));
+  const totalSpentYday   = yesterdayLogs.reduce((a, l) => a + (Number(l.totalCost) || 0), 0);
+
+  const todayLogs        = logs.filter((l) => isToday(l.loggedAt));
+  const totalSpentToday  = todayLogs.reduce((a, l) => a + (Number(l.totalCost) || 0), 0);
+
+  const moneySaved    = totalSpentYday - totalSpentToday;
+  const savedPositive = moneySaved >= 0;
+
   const thisMonthLogs = logs.filter((l) => isThisMonth(l.loggedAt));
-  const totalLitersMonth = thisMonthLogs.reduce((a, l) => a + (Number(l.litersAdded) || 0), 0);
-  const totalSpentMonth  = thisMonthLogs.reduce((a, l) => a + (Number(l.totalCost)   || 0), 0);
-  const avgPricePerL     = thisMonthLogs.length
+  const avgPricePerL  = thisMonthLogs.length
     ? thisMonthLogs.reduce((a, l) => a + (Number(l.pricePerL) || 0), 0) / thisMonthLogs.length
     : null;
 
-  // ── Fetch live DOE price ─────────────────────────────────────────────────
+  // ── Fetch live price ──────────────────────────────────────────────────────
   const handleFetchPrice = async () => {
     if (!activeVehicle) return;
     setFetching(true);
@@ -109,11 +274,8 @@ export function FuelTracker({ userId, unit, vehicle, tripDistanceKm }: Props) {
     }
   };
 
-  // ── Auto-fill & auto-fetch when refuel panel opens ───────────────────────
   useEffect(() => {
     if (!showRefuel) return;
-
-    // Fetch latest vehicle data from API to get up-to-date tank levels
     (async () => {
       const v = await userVehicleApi.get(userId);
       const resolved = v ?? vehicle;
@@ -122,8 +284,6 @@ export function FuelTracker({ userId, unit, vehicle, tripDistanceKm }: Props) {
         const topUp = Math.max(0, Number(resolved.tankMax) - Number(resolved.tankCurrent));
         setLiters(topUp > 0 ? topUp.toFixed(1) : "");
       }
-
-      // Auto-fetch live price so cost preview populates immediately
       const fuelType = (v ?? vehicle)?.fuelType;
       if (fuelType) {
         setFetching(true);
@@ -138,7 +298,6 @@ export function FuelTracker({ userId, unit, vehicle, tripDistanceKm }: Props) {
     })();
   }, [showRefuel]); // eslint-disable-line
 
-  // ── Log refuel ──────────────────────────────────────────────────────────
   const handleLogRefuel = async () => {
     if (!activeVehicle || !liters || !pricePerL) return;
     setSavingLog(true);
@@ -155,31 +314,25 @@ export function FuelTracker({ userId, unit, vehicle, tripDistanceKm }: Props) {
       loggedAt: new Date().toISOString(),
     });
     setLogs((prev) => [log, ...prev]);
-    setLiters("");
-    setPricePerL("");
-    setOdometerKm("");
-    setNotes("");
-    setLivePrice(null);
-    setShowRefuel(false);
-    setSavingLog(false);
+    setLiters(""); setPricePerL(""); setOdometerKm(""); setNotes("");
+    setLivePrice(null); setShowRefuel(false); setSavingLog(false);
   };
 
-  // ── Calculate trip fuel cost ────────────────────────────────────────────
   const handleCalculate = async () => {
     if (!activeVehicle || !tripDistanceKm) return;
     setCalcLoading(true);
     try {
       const p = await fuelPriceApi.getCurrent(activeVehicle.fuelType);
-      const litersNeeded = fuelConsumedL(tripDistanceKm, activeVehicle.mileage);
+      const litersNeeded  = fuelConsumedL(tripDistanceKm, activeVehicle.mileage);
       const estimatedCost = litersNeeded * p.pricePerLiter;
-      const canComplete = Number(activeVehicle.tankCurrent) >= litersNeeded;
+      const canComplete   = Number(activeVehicle.tankCurrent) >= litersNeeded;
       setTripCalc({ litersNeeded, estimatedCost, priceUsed: p.pricePerLiter, canComplete });
     } finally {
       setCalcLoading(false);
     }
   };
 
-  // ── Render ──────────────────────────────────────────────────────────────
+  // ── Render guard ──────────────────────────────────────────────────────────
   if (!activeVehicle) {
     return (
       <div className="p-4 text-center py-12">
@@ -192,19 +345,69 @@ export function FuelTracker({ userId, unit, vehicle, tripDistanceKm }: Props) {
 
   const fuelVol = (l: number) => {
     const v = Number(l) || 0;
-    return unit === "imperial"
-      ? `${litersToGal(v).toFixed(2)} gal`
-      : `${v.toFixed(2)} L`;
+    return unit === "imperial" ? `${litersToGal(v).toFixed(2)} gal` : `${v.toFixed(2)} L`;
   };
 
-  // Coerce tank values — MySQL returns numeric columns as strings
   const tankCurrent = Number(activeVehicle.tankCurrent) || 0;
   const tankMax     = Number(activeVehicle.tankMax)     || 0;
+
+  // Goal display helpers
+  const goalDisplay   = unit === "imperial"
+    ? `${l100kmToMpg(consumptionGoal).toFixed(1)} MPG`
+    : `${consumptionGoal.toFixed(1)} L/100km`;
+  const goalUnit      = unit === "imperial" ? "MPG" : "L/100km";
+  const meetingGoal   = actualL100km <= consumptionGoal && actualL100km > 0;
+  const actualDisplay = fmtEfficiency(activeVehicle.mileage, unit);
+
+  // Progress ratio for bar (L/100km: lower is better → bar fills as actual approaches goal)
+  const progressPct = consumptionGoal > 0 && actualL100km > 0
+    ? Math.min((actualL100km / consumptionGoal) * 100, 100)
+    : 0;
+
+  // Alert banner copy
+  const alertCopy = alertLevel === "exceeded"
+    ? {
+        bg:   "bg-red-50 border-red-300",
+        icon: <ShieldAlert size={15} className="text-red-500 shrink-0 mt-0.5" />,
+        title: "Consumption goal exceeded",
+        body: `Your vehicle is consuming ${actualL100km.toFixed(1)} L/100km, above your ${consumptionGoal.toFixed(1)} L/100km limit. Consider a tune-up or adjust driving habits.`,
+        pill: "bg-red-100 text-red-700",
+      }
+    : alertLevel === "approaching"
+    ? {
+        bg:   "bg-amber-50 border-amber-300",
+        icon: <AlertTriangle size={15} className="text-amber-500 shrink-0 mt-0.5" />,
+        title: "Approaching consumption goal",
+        body: `At ${actualL100km.toFixed(1)} L/100km you are ${(consumptionGoal - actualL100km).toFixed(2)} L/100km away from your goal of ${consumptionGoal.toFixed(1)} L/100km.`,
+        pill: "bg-amber-100 text-amber-700",
+      }
+    : null;
 
   return (
     <div className="p-4 space-y-4 overflow-y-auto">
 
-      {/* ── Tank gauge ──────────────────────────────────────────────────── */}
+      {/* ── Goal alert banner ─────────────────────────────────────────── */}
+      {alertCopy && !alertDismissed && (
+        <div className={`rounded-xl border p-3 flex gap-2.5 ${alertCopy.bg}`}>
+          {alertCopy.icon}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center justify-between gap-2">
+              <p className={`text-xs px-2 py-0.5 rounded-full ${alertCopy.pill}`}>
+                {alertCopy.title}
+              </p>
+              <button
+                onClick={() => setAlertDismissed(true)}
+                className="text-gray-400 hover:text-gray-600 shrink-0"
+              >
+                <X size={13} />
+              </button>
+            </div>
+            <p className="text-xs text-gray-600 mt-1.5">{alertCopy.body}</p>
+          </div>
+        </div>
+      )}
+
+      {/* ── Tank gauge ────────────────────────────────────────────────── */}
       <div className="bg-white border border-gray-100 rounded-xl p-4 space-y-3">
         <div className="flex items-center justify-between">
           <span className="text-xs text-gray-500 flex items-center gap-1">
@@ -221,28 +424,181 @@ export function FuelTracker({ userId, unit, vehicle, tripDistanceKm }: Props) {
         </p>
       </div>
 
-      {/* ── Monthly stats ───────────────────────────────────────────────── */}
+      {/* ── Spend & savings stats ─────────────────────────────────────── */}
       <div className="grid grid-cols-2 gap-2">
+        <div className="bg-gray-50 rounded-xl p-3">
+          <p className="text-xs text-gray-500">Money Spent (Yesterday)</p>
+          <p className="text-gray-800 mt-1">{fmtPHP(totalSpentYday)}</p>
+        </div>
         <div className="bg-blue-50 rounded-xl p-3">
-          <p className="text-xs text-blue-500">Fuel Added (Month)</p>
-          <p className="text-blue-800 mt-1">{fuelVol(totalLitersMonth)}</p>
+          <p className="text-xs text-blue-500">Money Spent (Today)</p>
+          <p className="text-blue-800 mt-1">{fmtPHP(totalSpentToday)}</p>
         </div>
-        <div className="bg-green-50 rounded-xl p-3">
-          <p className="text-xs text-green-500">Money Spent (Month)</p>
-          <p className="text-green-800 mt-1">{fmtPHP(totalSpentMonth)}</p>
+        <div className={`rounded-xl p-3 col-span-2 flex items-center justify-between ${
+          savedPositive ? "bg-green-50" : "bg-red-50"
+        }`}>
+          <div>
+            <p className={`text-xs ${savedPositive ? "text-green-500" : "text-red-500"}`}>
+              Money Saved
+            </p>
+            <p className={`mt-1 ${savedPositive ? "text-green-800" : "text-red-700"}`}>
+              {savedPositive ? "" : "−"}{fmtPHP(Math.abs(moneySaved))}
+            </p>
+          </div>
+          {savedPositive
+            ? <TrendingDown size={18} className="text-green-400" />
+            : <TrendingUp   size={18} className="text-red-400"   />}
         </div>
-        {avgPricePerL !== null && (
-          <div className="bg-orange-50 rounded-xl p-3 col-span-2">
-            <p className="text-xs text-orange-500">Avg. Price Paid</p>
-            <p className="text-orange-800 mt-1">
-              ₱{Number(avgPricePerL).toFixed(2)}/L ·{" "}
-              <span className="text-xs capitalize">{activeVehicle.fuelType}</span>
+      </div>
+
+      {/* ── Minimum Consumption Goal ──────────────────────────────────── */}
+      <div className={`bg-white rounded-xl p-4 space-y-3 border-2 transition-colors ${
+        alertLevel === "exceeded"   ? "border-red-300" :
+        alertLevel === "approaching"? "border-amber-300" :
+        "border-gray-200"
+      }`}>
+        {/* Header row */}
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-gray-500 flex items-center gap-1.5">
+            <Target size={12} className="text-purple-500" />
+            Minimum Consumption Goal
+          </span>
+          <div className="flex items-center gap-2">
+            {/* Notification toggle */}
+            {canUseNotifications() && (
+              notifPermission === "granted" ? (
+                <span
+                  className="flex items-center gap-1 text-xs text-green-600"
+                  title="Browser notifications enabled"
+                >
+                  <Bell size={12} /> Alerts on
+                </span>
+              ) : notifPermission === "denied" ? (
+                <span
+                  className="flex items-center gap-1 text-xs text-gray-400"
+                  title="Notifications blocked in browser settings"
+                >
+                  <BellOff size={12} /> Blocked
+                </span>
+              ) : (
+                <button
+                  onClick={requestPermission}
+                  className="flex items-center gap-1 text-xs text-purple-600 hover:text-purple-800 border border-purple-200 rounded-full px-2 py-0.5 transition-colors"
+                  title="Enable browser notifications for goal alerts"
+                >
+                  <Bell size={11} /> Enable alerts
+                </button>
+              )
+            )}
+            {!editingGoal && (
+              <button
+                onClick={startEditGoal}
+                className="text-gray-400 hover:text-purple-600 transition-colors"
+                title="Edit goal"
+              >
+                <Pencil size={13} />
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Edit / display row */}
+        {editingGoal ? (
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              value={goalInput}
+              onChange={(e) => setGoalInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter")  saveGoal();
+                if (e.key === "Escape") cancelGoal();
+              }}
+              min={0.1}
+              step={0.1}
+              autoFocus
+              className="flex-1 border border-purple-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400"
+            />
+            <span className="text-xs text-gray-400 whitespace-nowrap">{goalUnit}</span>
+            <button onClick={saveGoal}   className="text-green-600 hover:text-green-700" title="Save">
+              <Check size={16} />
+            </button>
+            <button onClick={cancelGoal} className="text-gray-400 hover:text-red-500"    title="Cancel">
+              <X size={16} />
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-end justify-between">
+            <p className="text-purple-700">{goalDisplay}</p>
+            <span className={`text-xs px-2 py-0.5 rounded-full ${
+              alertLevel === "exceeded"    ? "bg-red-100 text-red-700" :
+              alertLevel === "approaching" ? "bg-amber-100 text-amber-700" :
+              meetingGoal                  ? "bg-green-100 text-green-700" :
+                                             "bg-gray-100 text-gray-500"
+            }`}>
+              {alertLevel === "exceeded"    ? "⛽ Exceeded" :
+               alertLevel === "approaching" ? "⚠ Approaching" :
+               meetingGoal                  ? "✓ Goal met" :
+                                              "No data"}
+            </span>
+          </div>
+        )}
+
+        {/* Progress bar */}
+        {!editingGoal && (
+          <div className="space-y-1">
+            <div className="flex justify-between text-xs text-gray-400">
+              <span>Actual: {actualDisplay}</span>
+              <span>Goal: {goalDisplay}</span>
+            </div>
+            {/* 
+              Bar fills from left. At 0% = perfect efficiency, at 100% = goal hit.
+              Warning zone: last 15% of bar turns amber; exceeded = red full bar.
+            */}
+            <div className="relative w-full h-2 bg-gray-100 rounded-full overflow-hidden">
+              {/* Warning zone marker */}
+              <div
+                className="absolute top-0 bottom-0 bg-amber-100"
+                style={{
+                  left:  `${(1 - WARNING_ZONE_PCT) * 100}%`,
+                  width: `${WARNING_ZONE_PCT * 100}%`,
+                }}
+              />
+              {/* Actual fill */}
+              <div
+                className={`absolute top-0 left-0 h-full rounded-full transition-all duration-500 ${
+                  alertLevel === "exceeded"    ? "bg-red-500" :
+                  alertLevel === "approaching" ? "bg-amber-400" :
+                  "bg-green-400"
+                }`}
+                style={{ width: `${progressPct}%` }}
+              />
+            </div>
+            <div className="flex justify-between text-xs text-gray-400">
+              <span>Efficient</span>
+              <span className="text-amber-400">▲ Warn zone</span>
+              <span>Goal</span>
+            </div>
+            <p className="text-xs text-gray-400">
+              {unit === "imperial"
+                ? "Higher MPG = more efficient. Goal is the minimum MPG to achieve."
+                : "Lower L/100km = more efficient. Goal is the max consumption allowed."}
             </p>
           </div>
         )}
+
+        {/* Re-show dismissed alert link */}
+        {alertLevel && alertDismissed && (
+          <button
+            onClick={() => setAlertDismissed(false)}
+            className="w-full text-xs text-center text-gray-400 hover:text-gray-600 flex items-center justify-center gap-1"
+          >
+            <AlertTriangle size={11} />
+            Show goal alert
+          </button>
+        )}
       </div>
 
-      {/* ── Trip fuel estimate ───────────────────────────────────────────── */}
+      {/* ── Trip fuel estimate ───────────────────────────────────────── */}
       <div className="border border-gray-200 rounded-xl overflow-hidden">
         <div className="flex items-center justify-between px-4 py-3 bg-gray-50">
           <div className="flex items-center gap-2">
@@ -283,12 +639,12 @@ export function FuelTracker({ userId, unit, vehicle, tripDistanceKm }: Props) {
                 </div>
                 <div className="flex justify-between text-xs">
                   <span className="text-gray-500">Price Used</span>
-                  <span className="text-gray-600">₱{Number(tripCalc.priceUsed).toFixed(2)}/L (GasWatch PH)</span>
+                  <span className="text-gray-600">
+                    ₱{Number(tripCalc.priceUsed).toFixed(2)}/L (GasWatch PH)
+                  </span>
                 </div>
                 <div className={`rounded-lg px-3 py-2 text-xs flex items-center gap-1.5 ${
-                  tripCalc.canComplete
-                    ? "bg-green-50 text-green-700"
-                    : "bg-red-50 text-red-700"
+                  tripCalc.canComplete ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"
                 }`}>
                   <TrendingDown size={12} />
                   {tripCalc.canComplete
@@ -305,7 +661,7 @@ export function FuelTracker({ userId, unit, vehicle, tripDistanceKm }: Props) {
         )}
       </div>
 
-      {/* ── Log Refuel ──────────────────────────────────────────────────── */}
+      {/* ── Log Refuel ───────────────────────────────────────────────── */}
       <div className="border border-gray-200 rounded-xl overflow-hidden">
         <button
           onClick={() => setShowRefuel((v) => !v)}
@@ -315,12 +671,13 @@ export function FuelTracker({ userId, unit, vehicle, tripDistanceKm }: Props) {
             <Plus size={14} className="text-green-600" />
             <span className="text-xs text-gray-600">Log Refuel</span>
           </div>
-          {showRefuel ? <ChevronUp size={14} className="text-gray-400" /> : <ChevronDown size={14} className="text-gray-400" />}
+          {showRefuel
+            ? <ChevronUp size={14} className="text-gray-400" />
+            : <ChevronDown size={14} className="text-gray-400" />}
         </button>
 
         {showRefuel && (
           <div className="p-4 space-y-3">
-            {/* Fetch live price — now just a manual refresh button */}
             <button
               onClick={handleFetchPrice}
               disabled={fetchingPrice}
@@ -334,15 +691,9 @@ export function FuelTracker({ userId, unit, vehicle, tripDistanceKm }: Props) {
               <div className="bg-blue-50 rounded-lg px-3 py-2 text-xs text-blue-700">
                 GasWatch PH · {livePrice.fuelType}: ₱{Number(livePrice.pricePerLiter).toFixed(2)}/L
                 <span className="text-blue-400 ml-1">· {livePrice.effectiveDate}</span>
-                {livePrice.confidence === "scraped" && (
-                  <span className="ml-1 text-green-600">● live</span>
-                )}
-                {livePrice.confidence === "fallback" && (
-                  <span className="ml-1 text-orange-500">(GasWatch unreachable — last known)</span>
-                )}
-                {livePrice.confidence === "mock" && (
-                  <span className="ml-1 text-orange-500">(mock — backend offline)</span>
-                )}
+                {livePrice.confidence === "scraped"  && <span className="ml-1 text-green-600">● live</span>}
+                {livePrice.confidence === "fallback" && <span className="ml-1 text-orange-500">(GasWatch unreachable — last known)</span>}
+                {livePrice.confidence === "mock"     && <span className="ml-1 text-orange-500">(mock — backend offline)</span>}
               </div>
             )}
 
@@ -382,7 +733,6 @@ export function FuelTracker({ userId, unit, vehicle, tripDistanceKm }: Props) {
               </div>
             </div>
 
-            {/* Calculated cost — always visible when either field has a value */}
             <div className={`rounded-lg px-3 py-2.5 text-xs flex justify-between items-center border ${
               liters && pricePerL
                 ? "bg-green-50 border-green-200"
@@ -431,7 +781,7 @@ export function FuelTracker({ userId, unit, vehicle, tripDistanceKm }: Props) {
         )}
       </div>
 
-      {/* ── Recent logs ─────────────────────────────────────────────────── */}
+      {/* ── Refuel history ────────────────────────────────────────────── */}
       {logs.length > 0 && (
         <div className="border border-gray-200 rounded-xl overflow-hidden">
           <button
@@ -439,7 +789,9 @@ export function FuelTracker({ userId, unit, vehicle, tripDistanceKm }: Props) {
             className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 transition-colors"
           >
             <span className="text-xs text-gray-600">Refuel History ({logs.length})</span>
-            {showLogs ? <ChevronUp size={14} className="text-gray-400" /> : <ChevronDown size={14} className="text-gray-400" />}
+            {showLogs
+              ? <ChevronUp size={14} className="text-gray-400" />
+              : <ChevronDown size={14} className="text-gray-400" />}
           </button>
 
           {showLogs && (
@@ -454,7 +806,9 @@ export function FuelTracker({ userId, unit, vehicle, tripDistanceKm }: Props) {
                       {log.notes && <p className="text-xs text-gray-400 mt-0.5">{log.notes}</p>}
                       {log.loggedAt && (
                         <p className="text-xs text-gray-300 mt-0.5">
-                          {new Date(log.loggedAt).toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" })}
+                          {new Date(log.loggedAt).toLocaleDateString("en-PH", {
+                            month: "short", day: "numeric", year: "numeric",
+                          })}
                         </p>
                       )}
                     </div>
@@ -469,6 +823,9 @@ export function FuelTracker({ userId, unit, vehicle, tripDistanceKm }: Props) {
           )}
         </div>
       )}
+
+      {/* suppress unused-var lint */}
+      {avgPricePerL !== null && false && <span>{avgPricePerL}</span>}
     </div>
   );
 }
